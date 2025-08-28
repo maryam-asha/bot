@@ -26,10 +26,11 @@ class MainMenuHandler(BaseHandler):
         "حول الشركة المطورة": "مجموعة أوتوماتا4 هي شركة إقليمية مكرسة لتقديم حلول وخدمات استشارية مخصصة عالية الجودة لتكنولوجيا المعلومات..."
     }
     
-    def __init__(self, api_service=None):
+    def __init__(self, api_service=None, auth_handler=None):
         super().__init__()
         self.keyboard = BaseKeyboard()
         self.api_service = api_service
+        self.auth_handler = auth_handler
     
     async def process(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Process main menu input"""
@@ -62,7 +63,12 @@ class MainMenuHandler(BaseHandler):
     
     async def _handle_service_access(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle service access request"""
-        is_authenticated = self.get_user_data(context, 'authenticated', False)
+        # Use auth_handler to check authentication
+        if hasattr(self, 'auth_handler') and self.auth_handler:
+            is_authenticated = await self.auth_handler.is_authenticated(context)
+        else:
+            # Fallback to user_data check
+            is_authenticated = self.get_user_data(context, 'authenticated', False)
         
         if is_authenticated:
             logger.info("User authenticated, transitioning to SERVICE_MENU")

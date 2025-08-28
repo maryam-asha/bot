@@ -18,10 +18,10 @@ class MessageRouter:
         self.api_service = api_service
         
         # Initialize all handlers
-        self.main_menu_handler = MainMenuHandler(api_service)
+        self.auth_handler = AuthHandler(api_service)
+        self.main_menu_handler = MainMenuHandler(api_service, self.auth_handler)
         self.service_menu_handler = ServiceMenuHandler(api_service)
         self.form_handler = FormHandler(api_service)
-        self.auth_handler = AuthHandler(api_service)
         self.request_handler = RequestHandler(api_service)
         
         # Define state to handler mapping
