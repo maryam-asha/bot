@@ -1,0 +1,62 @@
+import os
+from dotenv import load_dotenv
+from enum import IntEnum
+
+
+load_dotenv()
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+
+class ConversationState(IntEnum):
+    """Enumeration for conversation states to improve code readability"""
+    MAIN_MENU = 0
+    SERVICE_MENU = 1
+    SELECT_REQUEST_TYPE = 2
+    SELECT_COMPLAINT_TYPE = 3
+    SELECT_SUBJECT = 4
+    FILL_FORM = 5
+    ENTER_MOBILE = 6
+    ENTER_OTP = 7
+    SELECT_REQUEST_NUMBER = 8
+    SELECT_SIDE = 9
+    SELECT_SERVICE_HIERARCHY = 10
+    SELECT_SERVICE_CATEGORY = 11
+    SELECT_COMPLAINT_SUBJECT = 12
+    SELECT_SERVICE = 13
+    SELECT_COMPLIMENT_SIDE = 14
+    CONFIRM_SUBMISSION = 15
+    COLLECT_FORM_FIELD = 16
+    SELECT_OTHER_SUBJECT = 17
+    SELECT_TIME_AM_PM = 18
+
+
+# Backward compatibility - keep the old constants for now
+MAIN_MENU = ConversationState.MAIN_MENU
+SERVICE_MENU = ConversationState.SERVICE_MENU
+SELECT_REQUEST_TYPE = ConversationState.SELECT_REQUEST_TYPE
+SELECT_COMPLAINT_TYPE = ConversationState.SELECT_COMPLAINT_TYPE
+SELECT_SUBJECT = ConversationState.SELECT_SUBJECT
+FILL_FORM = ConversationState.FILL_FORM
+ENTER_MOBILE = ConversationState.ENTER_MOBILE
+ENTER_OTP = ConversationState.ENTER_OTP
+SELECT_REQUEST_NUMBER = ConversationState.SELECT_REQUEST_NUMBER
+SELECT_SIDE = ConversationState.SELECT_SIDE
+SELECT_SERVICE_HIERARCHY = ConversationState.SELECT_SERVICE_HIERARCHY
+SELECT_SERVICE_CATEGORY = ConversationState.SELECT_SERVICE_CATEGORY
+SELECT_COMPLAINT_SUBJECT = ConversationState.SELECT_COMPLAINT_SUBJECT
+SELECT_SERVICE = ConversationState.SELECT_SERVICE
+SELECT_COMPLIMENT_SIDE = ConversationState.SELECT_COMPLIMENT_SIDE
+CONFIRM_SUBMISSION = ConversationState.CONFIRM_SUBMISSION
+COLLECT_FORM_FIELD = ConversationState.COLLECT_FORM_FIELD
+SELECT_OTHER_SUBJECT = ConversationState.SELECT_OTHER_SUBJECT
+SELECT_TIME_AM_PM = ConversationState.SELECT_TIME_AM_PM
+CACHE_EXPIRY = 3600  
+
+
+MAX_DESCRIPTION_LENGTH = 1000
+MIN_DESCRIPTION_LENGTH = 10
+
+
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_LEVEL = 'INFO'

@@ -1,0 +1,36 @@
+from .settings_simple import settings, Settings
+from .conversation_states import ConversationState
+
+# Backward compatibility - keep the old constants for the existing bot.py
+TOKEN = settings.telegram_token
+
+# Import all the conversation state constants
+MAIN_MENU = ConversationState.MAIN_MENU
+SERVICE_MENU = ConversationState.SERVICE_MENU
+SELECT_REQUEST_TYPE = ConversationState.SELECT_REQUEST_TYPE
+SELECT_COMPLAINT_TYPE = ConversationState.SELECT_COMPLAINT_TYPE
+SELECT_SUBJECT = ConversationState.SELECT_SUBJECT
+FILL_FORM = ConversationState.FILL_FORM
+ENTER_MOBILE = ConversationState.ENTER_MOBILE
+ENTER_OTP = ConversationState.ENTER_OTP
+SELECT_REQUEST_NUMBER = ConversationState.SELECT_REQUEST_NUMBER
+SELECT_SIDE = ConversationState.SELECT_SIDE
+SELECT_SERVICE_HIERARCHY = ConversationState.SELECT_SERVICE_HIERARCHY
+SELECT_SERVICE_CATEGORY = ConversationState.SELECT_SERVICE_CATEGORY
+SELECT_COMPLAINT_SUBJECT = ConversationState.SELECT_COMPLAINT_SUBJECT
+SELECT_SERVICE = ConversationState.SELECT_SERVICE
+SELECT_COMPLIMENT_SIDE = ConversationState.SELECT_COMPLIMENT_SIDE
+CONFIRM_SUBMISSION = ConversationState.CONFIRM_SUBMISSION
+COLLECT_FORM_FIELD = ConversationState.COLLECT_FORM_FIELD
+SELECT_OTHER_SUBJECT = ConversationState.SELECT_OTHER_SUBJECT
+SELECT_TIME_AM_PM = ConversationState.SELECT_TIME_AM_PM
+
+__all__ = [
+    'settings', 'Settings', 'ConversationState',
+    'TOKEN', 'MAIN_MENU', 'SERVICE_MENU', 'SELECT_REQUEST_TYPE', 
+    'SELECT_COMPLAINT_TYPE', 'SELECT_SUBJECT', 'FILL_FORM', 'ENTER_MOBILE', 
+    'ENTER_OTP', 'SELECT_REQUEST_NUMBER', 'SELECT_SIDE', 'SELECT_SERVICE_HIERARCHY', 
+    'SELECT_SERVICE_CATEGORY', 'SELECT_COMPLAINT_SUBJECT', 'SELECT_SERVICE', 
+    'SELECT_COMPLIMENT_SIDE', 'CONFIRM_SUBMISSION', 'COLLECT_FORM_FIELD', 
+    'SELECT_OTHER_SUBJECT', 'SELECT_TIME_AM_PM'
+]
