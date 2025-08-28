@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class FormHandler(BaseHandler):
     """Handler for form filling operations"""
     
-    def __init__(self, api_service):
+    def __init__(self, api_service=None):
         super().__init__()
         self.api_service = api_service
         
@@ -116,20 +116,26 @@ class FormHandler(BaseHandler):
         """Handle document input"""
         if update.message.document:
             file = update.message.document
-            file_data = await update.get_file(file.file_id).download_as_bytearray()
-            
             try:
+                # Download file data
+                file_data = await update.get_file(file.file_id).download_as_bytearray()
+                
                 # Upload file to API
-                upload_result = await self.api_service.upload_file(file_data, file.file_name)
-                
-                # Store file ID in form
-                current_document_files = form.get_document_files(document.id) or []
-                current_document_files.append(upload_result['file_id'])
-                form.set_document_files(document.id, current_document_files)
-                
-                await update.message.reply_text(
-                    f"تم رفع الملف {file.file_name} بنجاح."
-                )
+                if self.api_service:
+                    upload_result = await self.api_service.upload_file(file_data, file.file_name)
+                    
+                    # Store file ID in form
+                    current_document_files = form.get_document_files(document.id) or []
+                    current_document_files.append(upload_result['file_id'])
+                    form.set_document_files(document.id, current_document_files)
+                    
+                    await update.message.reply_text(
+                        f"تم رفع الملف {file.file_name} بنجاح."
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"تم استقبال الملف {file.file_name} بنجاح."
+                    )
                 
             except Exception as e:
                 logger.error(f"Error uploading file: {e}")

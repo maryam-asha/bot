@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class ServiceMenuHandler(BaseHandler):
     """Handler for service menu operations"""
     
-    def __init__(self, api_service):
+    def __init__(self, api_service=None):
         super().__init__()
         self.api_service = api_service
         

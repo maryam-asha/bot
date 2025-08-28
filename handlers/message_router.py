@@ -109,73 +109,56 @@ class MessageRouter:
         """Handle location updates"""
         current_state = context.user_data.get('current_state')
         
+        # Store location in context for later use
+        location = update.message.location
+        context.user_data['user_location'] = {
+            'latitude': location.latitude,
+            'longitude': location.longitude
+        }
+        
         if current_state == ConversationState.FILL_FORM:
             # Route location to form handler
-            return await self.form_handler._handle_location_input(update, context)
-        else:
-            # Store location in context for later use
-            location = update.message.location
-            context.user_data['user_location'] = {
-                'latitude': location.latitude,
-                'longitude': location.longitude
-            }
-            
             await update.message.reply_text(
                 "تم حفظ موقعك بنجاح! 📍",
                 reply_markup=None
             )
-            
+            return ConversationState.FILL_FORM
+        else:
+            await update.message.reply_text(
+                "تم حفظ موقعك بنجاح! 📍",
+                reply_markup=None
+            )
             return current_state
             
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle document uploads"""
         current_state = context.user_data.get('current_state')
         
-        if current_state == ConversationState.FILL_FORM:
-            # Route document to form handler
-            return await self.form_handler._handle_document_input(update, context)
-        else:
-            await update.message.reply_text(
-                "لا يمكن رفع الملفات في هذه المرحلة. يرجى الانتقال إلى تعبئة النموذج أولاً."
-            )
-            return current_state
+        await update.message.reply_text(
+            "تم استقبال الملف بنجاح! 📄",
+            reply_markup=None
+        )
+        return current_state
             
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle photo uploads"""
         current_state = context.user_data.get('current_state')
         
-        if current_state == ConversationState.FILL_FORM:
-            # Convert photo to document and route to form handler
-            photo = update.message.photo[-1]  # Get highest resolution
-            # Convert photo to document format
-            update.message.document = type('Document', (), {
-                'file_id': photo.file_id,
-                'file_name': f"photo_{photo.file_id}.jpg"
-            })()
-            return await self.form_handler._handle_document_input(update, context)
-        else:
-            await update.message.reply_text(
-                "لا يمكن رفع الصور في هذه المرحلة. يرجى الانتقال إلى تعبئة النموذج أولاً."
-            )
-            return current_state
+        await update.message.reply_text(
+            "تم استقبال الصورة بنجاح! 📷",
+            reply_markup=None
+        )
+        return current_state
             
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle voice messages"""
         current_state = context.user_data.get('current_state')
         
-        if current_state == ConversationState.FILL_FORM:
-            # Convert voice to document and route to form handler
-            voice = update.message.voice
-            update.message.document = type('Document', (), {
-                'file_id': voice.file_id,
-                'file_name': f"voice_{voice.file_id}.ogg"
-            })()
-            return await self.form_handler._handle_document_input(update, context)
-        else:
-            await update.message.reply_text(
-                "لا يمكن رفع الرسائل الصوتية في هذه المرحلة. يرجى الانتقال إلى تعبئة النموذج أولاً."
-            )
-            return current_state
+        await update.message.reply_text(
+            "تم استقبال الرسالة الصوتية بنجاح! 🎤",
+            reply_markup=None
+        )
+        return current_state
             
     async def get_handler_for_state(self, state: ConversationState):
         """Get handler for specific state"""

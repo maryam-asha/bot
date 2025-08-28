@@ -26,9 +26,10 @@ class MainMenuHandler(BaseHandler):
         "حول الشركة المطورة": "مجموعة أوتوماتا4 هي شركة إقليمية مكرسة لتقديم حلول وخدمات استشارية مخصصة عالية الجودة لتكنولوجيا المعلومات..."
     }
     
-    def __init__(self):
+    def __init__(self, api_service=None):
         super().__init__()
         self.keyboard = BaseKeyboard()
+        self.api_service = api_service
     
     async def process(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Process main menu input"""

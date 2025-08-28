@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class AuthHandler(BaseHandler):
     """Handler for authentication operations"""
     
-    def __init__(self, api_service):
+    def __init__(self, api_service=None):
         super().__init__()
         self.api_service = api_service
         self.MOBILE_CODE = settings.mobile_code
