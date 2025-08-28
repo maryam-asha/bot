@@ -61,6 +61,10 @@ class SimpleBot:
             self._handle_text_message
         ))
         
+        # معالج عام للتحديثات (للتشخيص)
+        self.application.add_handler(MessageHandler(filters.ALL, self._debug_log_update), group=1)
+        self.application.add_error_handler(self._on_error)
+        
     @monitor_async_performance
     async def _handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """معالجة أمر /start"""
@@ -162,6 +166,17 @@ class SimpleBot:
                     one_time_keyboard=True
                 )
             )
+    
+    async def _debug_log_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """تسجيل التحديثات للتشخيص"""
+        logger.info(f"تحديث واصل: {update}")
+        if update.message:
+            logger.info(f"رسالة من المستخدم: {update.message.from_user.username or update.message.from_user.id}")
+            logger.info(f"نص الرسالة: {update.message.text}")
+            
+    async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE):
+        """معالجة الأخطاء غير المعالجة"""
+        logger.error("خطأ غير معالج", exc_info=context.error)
             
     async def run(self):
         """تشغيل البوت"""
@@ -171,7 +186,10 @@ class SimpleBot:
             # تهيئة وبدء التطبيق
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            await self.application.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True
+            )
             
             logger.info("البوت يعمل بنجاح! 🚀")
             logger.info("اضغط Ctrl+C لإيقاف البوت")

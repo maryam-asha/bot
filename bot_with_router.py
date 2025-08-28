@@ -188,7 +188,10 @@ class RouterBot:
             # تهيئة وبدء التطبيق
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            await self.application.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES, 
+                drop_pending_updates=True
+            )
             
             logger.info("البوت يعمل مع مراقبة الأداء...")
             

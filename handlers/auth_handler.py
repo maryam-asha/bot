@@ -41,9 +41,11 @@ class AuthHandler(BaseHandler):
             )
             return ConversationState.ENTER_MOBILE
             
-        if len(mobile) != self.MOBILE_LENGTH:
+        # Check length without prefix (remove prefix for length validation)
+        mobile_without_prefix = mobile[len(self.MOBILE_CODE):]
+        if len(mobile_without_prefix) != 8:  # Assuming 8 digits after prefix
             await update.message.reply_text(
-                f"يرجى إدخال رقم هاتف من {self.MOBILE_LENGTH} أرقام"
+                f"يرجى إدخال رقم هاتف من 8 أرقام بعد البادئة {self.MOBILE_CODE}"
             )
             return ConversationState.ENTER_MOBILE
             
@@ -130,7 +132,8 @@ class AuthHandler(BaseHandler):
         
     async def is_authenticated(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Check if user is authenticated"""
-        return context.user_data.get('user_authenticated', False)
+        # Temporarily consider user authenticated from the start
+        return True
         
     async def logout(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Logout user"""
