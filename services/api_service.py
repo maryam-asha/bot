@@ -157,6 +157,36 @@ class ApiService:
                 logger.error(f"Error fetching request type subjects: {str(e)}")
                 raise
 
+    async def get_form(self, request_type_id: int, complaint_subject_id: int, other_subject_id: Optional[int] = None, complaint_service_id: Optional[int] = None) -> Dict[str, Any]:
+        """جلب النموذج من API"""
+        logger.info(f"Calling get_form with request_type_id={request_type_id}, complaint_subject_id={complaint_subject_id}, other_subject_id={other_subject_id}, complaint_service_id={complaint_service_id}")
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                params = {
+                    'location_id': self.location_id,
+                    'request_type_id': request_type_id,
+                    'complaint_subject_id': complaint_subject_id
+                }
+                if other_subject_id:
+                    params['other_subject_id'] = other_subject_id
+                if complaint_service_id:
+                    params['complaint_service_id'] = complaint_service_id
+                
+                logger.info(f"Calling get_form with params: {params}")
+
+                response = await client.post(
+                    f"{settings.base_url}/complaints/form-for-request",
+                    headers=self.headers,
+                    json=params
+                )
+                response.raise_for_status()
+                logger.info(f"get_form response: {response.json()}")
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error fetching form: {str(e)}")
+                raise
+
     async def get_form_data(self, request_type_id: int, request_subject_id: int, other_subject_id: Optional[int] = None, complaint_service_id: Optional[int] = None, side_id: Optional[int] = None) -> Dict[str, Any]:
         logger.info(f"Calling form request with request_type_id={request_type_id}, request_subject_id={request_subject_id}, other_subject_id={other_subject_id}, complaint_service_id={complaint_service_id}, side_id={side_id},location_id ={self.location_id}")
         # logger.info(f"Calling form request {other_subject_id}, {request_type_id}, {request_subject_id}, {other_subject_id}, {complaint_service_id}, {side_id}")

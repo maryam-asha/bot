@@ -4,6 +4,9 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, U
 from datetime import datetime, timedelta
 from services.api_service import ApiService
 from forms.form_model import FormAttribute, FormDocument, DynamicForm
+from form_handler_improved import ImprovedFormHandler
+from form_file_handler import FormFileHandler, FormLocationHandler
+from form_error_handler import FormErrorHandler, FormDataSanitizer
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers.base_handler import BaseHandler
 from handlers.main_menu_handler import MainMenuHandler
@@ -39,7 +42,7 @@ MAIN_MENU_RESPONSES = {
     "حول الشركة المطورة": "مجموعة أوتوماتا4 هي شركة إقليمية مكرسة لتقديم حلول وخدمات استشارية مخصصة عالية الجودة لتكنولوجيا المعلومات..."
 }
 async def initialize_bot():
-    global api_service
+    global api_service, form_handler, file_handler, location_handler, error_handler
     api_service = ApiService()
     project_settings = await api_service.initialize_urls()
     
@@ -49,6 +52,17 @@ async def initialize_bot():
     settings.username_hint = project_settings.get("USERNAME_HINT", settings.username_hint)
     settings.mobile_length = project_settings.get("MOBILE_LENGTH", settings.mobile_length)
     settings.mobile_code = project_settings.get("MOBILE_CODE", settings.mobile_code)
+    
+    # إنشاء المعالجات المحسنة
+    form_handler = ImprovedFormHandler(api_service)
+    file_handler = FormFileHandler(api_service)
+    location_handler = FormLocationHandler(api_service)
+    error_handler = FormErrorHandler()
+    
+    # ربط المعالجات معاً
+    form_handler.set_handlers(file_handler, location_handler, error_handler)
+    
+    logger.info("Enhanced form handlers initialized successfully")
 
 async def create_reply_keyboard(buttons: List[List[str]], include_back=True, include_main_menu=True, one_time=True) -> ReplyKeyboardMarkup:
     keyboard = [row[:] for row in buttons]
@@ -569,157 +583,22 @@ async def select_compliment_side(update: Update, context) -> int:
 
 
 async def fill_form(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    update_last_activity(context)
-    form = context.user_data.get('form')
-    if not form:
-        logger.error("No form found in user_data")
-        await send_error_message(update, 'حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.')
-        return ConversationHandler.END
-
-    # Handle back button - go to previous field
-    if update.message.text == '▶️ الرجوع':
-        return await go_back_to_previous_field(update, context, form)
-    
-    # Handle main menu button
-    if update.message.text == MAIN_MENU_BUTTON:
-        await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
-        return ConversationState.MAIN_MENU
-
-    # Get current field (either from context or next field)
-    current_field = context.user_data.get('current_form_field')
-    if not current_field:
-        current_field = form.get_next_field(context)
-        if not current_field:
-            logger.debug("No next field found, showing summary")
-            return await show_form_summary(update, context)
-        # Store current field in context for back navigation
-        context.user_data['current_form_field'] = current_field
-        context.user_data['form_field_history'] = context.user_data.get('form_field_history', [])
-
-    user_input = update.message.text if update.message.text else None
-    attachment = update.message.document or update.message.photo or update.message.video or update.message.audio
-
-    if isinstance(current_field, FormDocument):
-        # Handle document upload
-        if attachment:
-            try:
-                # Get file data from attachment
-                if update.message.document:
-                    file_data = await context.bot.get_file(update.message.document.file_id)
-                    file_bytes = await file_data.download_as_bytearray()
-                    file_name = update.message.document.file_name
-                elif update.message.photo:
-                    file_data = await context.bot.get_file(update.message.photo[-1].file_id)
-                    file_bytes = await file_data.download_as_bytearray()
-                    file_name = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                elif update.message.video:
-                    file_data = await context.bot.get_file(update.message.video.file_id)
-                    file_bytes = await file_data.download_as_bytearray()
-                    file_name = update.message.video.file_name or f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-                elif update.message.audio:
-                    file_data = await context.bot.get_file(update.message.audio.file_id)
-                    file_bytes = await file_data.download_as_bytearray()
-                    file_name = update.message.audio.file_name or f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
-                else:
-                    await send_error_message(update, 'نوع الملف غير مدعوم.')
-                    return ConversationState.FILL_FORM
-
-                # Upload file via API
-                upload_result = await api_service.upload_file(file_bytes, file_name)
-                file_id = upload_result.get('file_id')
-                
-                if not file_id:
-                    await send_error_message(update, 'فشل في رفع الملف. يرجى المحاولة مرة أخرى.')
-                    return ConversationState.FILL_FORM
-
-                # Store file ID
-                current_files = form.document_data.get(current_field.id, [])
-                current_files.append(file_id)
-                form.set_document(current_field.id, current_files)
-                
-                if current_field.is_multi:
-                    # Show field again for more uploads
-                    await show_form_field(update, context, current_field)
-                    return ConversationState.FILL_FORM
-                else:
-                    # Move to next field
-                    return await move_to_next_field(update, context, form)
-                    
-            except Exception as e:
-                logger.error(f"Error uploading file: {str(e)}")
-                await send_error_message(update, 'حدث خطأ أثناء رفع الملف. يرجى المحاولة مرة أخرى.')
-                return ConversationState.FILL_FORM
-                
-        elif user_input == 'تم' and current_field.is_multi:
-            # Finish multi-upload
-            return await move_to_next_field(update, context, form)
-            
-        elif user_input == 'التالي' and not current_field.required:
-            form.skip_field(str(current_field.id))
-            return await move_to_next_field(update, context, form)
-            
+    """معالجة محسنة لملء النموذج"""
+    try:
+        # استخدام المعالج المحسن
+        return await form_handler.handle_field_input(update, context)
+    except Exception as e:
+        logger.error(f"Error in improved form handler: {str(e)}")
+        # استخدام معالج الأخطاء المحسن
+        if error_handler:
+            return await error_handler.handle_validation_error(
+                update, context, None, f"حدث خطأ: {str(e)}"
+            )
         else:
-            await send_error_message(update, 'يرجى رفع ملف صالح')
-            return ConversationState.FILL_FORM
+            await update.message.reply_text("حدث خطأ غير متوقع. حاول مرة أخرى.")
+            return ConversationState.MAIN_MENU
 
-    else:  # FormAttribute
-        if user_input == 'التالي' and not current_field.required:
-            form.skip_field(str(current_field.id))
-            return await move_to_next_field(update, context, form)
 
-        # Handle special types and get processed value
-        processed_value = user_input
-        if current_field.type_code == 'switch':
-            if user_input == 'نعم':
-                processed_value = 'true'
-            elif user_input == 'لا':
-                processed_value = 'false'
-            else:
-                processed_value = None
-        elif current_field.type_code == 'time':
-            try:
-                # Try parsing only HH:MM (no AM/PM yet)
-                input_time = datetime.strptime(user_input.strip(), "%I:%M").time()
-                context.user_data['temp_time_input'] = user_input.strip()
-                context.user_data['pending_time_field_id'] = current_field.id
-                await update.message.reply_text(
-                    "يرجى اختيار AM أو PM:",
-                    reply_markup=await create_reply_keyboard([['AM', 'PM'], ['▶️ الرجوع', MAIN_MENU_BUTTON]])
-                )
-                return ConversationState.SELECT_TIME_AM_PM
-            except ValueError:
-                await send_error_message(update, "يرجى إدخال وقت بالصيغة hh:mm ")
-                return ConversationState.FILL_FORM
-            
-        elif current_field.type_code in ['options', 'autocomplete', 'multi_options', 'multiple_autocomplete']:
-            # Find ID from name (for options/autocomplete)
-            selected_option = next((opt for opt in current_field.options if opt['name'] == user_input), None)
-            if selected_option:
-                processed_value = str(selected_option['id'])
-            else:
-                processed_value = None
-            if current_field.type_code in ['multi_options', 'multiple_autocomplete']:
-                if user_input == 'تم':
-                    # Finish multi-select, join selected IDs
-                    processed_value = ','.join(current_field.selected_values)
-                else:
-                    selected_option = next((opt for opt in current_field.options if opt['name'] == user_input), None)
-                    if selected_option:
-                        current_field.selected_values.append(str(selected_option['id']))
-                    await show_form_field(update, context, current_field)
-                    return ConversationState.FILL_FORM
-
-        # Apply validation
-        is_valid, error = current_field.validate(processed_value)
-        if not is_valid:
-            await send_error_message(update, error)
-            return ConversationState.FILL_FORM
-
-        # Store value
-        form.data[str(current_field.id)] = processed_value
-
-        # Move to next field
-        return await move_to_next_field(update, context, form)
 
 
 async def create_location_keyboard(include_back=True, include_main_menu=True):
@@ -1221,19 +1100,23 @@ async def select_subject(update: Update, context) -> int:
             return ConversationState.SELECT_OTHER_SUBJECT
         
         else:
-            form_data = await api_service.get_form_data(
-                request_type_id=context.user_data['request_type']['id'],
-                request_subject_id=selected_subject['id'],
-                side_id=context.user_data['side_id']
-            )
-           
-            context.user_data['form'] = DynamicForm(form_data)
-            first_field = context.user_data['form'].get_next_field(context)
-            if first_field:
-                return await show_form_field(update, context, first_field)
-            else:
-                await update.message.reply_text('لا توجد حقول في النموذج.')
-                return ConversationHandler.END
+            try:
+                # جلب النموذج
+                response = await api_service.get_form(
+                    request_type_id=context.user_data['request_type']['id'],
+                    complaint_subject_id=selected_subject['id']
+                )
+                
+                form = DynamicForm.from_dict(response)
+                
+                # بدء النموذج المحسن
+                return await form_handler.start_form_filling(update, context, form)
+                
+            except Exception as e:
+                logger.error(f"Error starting form: {str(e)}")
+                return await error_handler.handle_validation_error(
+                    update, context, None, f"خطأ في بدء النموذج: {str(e)}"
+                )
     except Exception as e:
         logger.error(f"Error processing subject selection: {str(e)}")
         await send_error_message(update, f"خطأ في معالجة الموضوع: {str(e)}")
@@ -1311,24 +1194,23 @@ async def select_service(update: Update, context) -> int:
         return ConversationState.SELECT_SERVICE
     
     try:
-        form_data = await api_service.get_form_data(
+        # جلب النموذج
+        response = await api_service.get_form(
             request_type_id=context.user_data['request_type']['id'],
-            request_subject_id=context.user_data['selected_subject_id'],
-            complaint_service_id=selected_service['value'],
-            side_id=context.user_data['side_id']
+            complaint_subject_id=context.user_data['selected_subject_id'],
+            complaint_service_id=selected_service['value']
         )
-       
-        context.user_data['form'] = DynamicForm(form_data)
-        first_field = context.user_data['form'].get_next_field(context)
-        if first_field:
-            return await show_form_field(update, context, first_field)
-        else:
-            await update.message.reply_text('لا توجد حقول في النموذج.')
-            return ConversationHandler.END
+        
+        form = DynamicForm.from_dict(response)
+        
+        # بدء النموذج المحسن
+        return await form_handler.start_form_filling(update, context, form)
+        
     except Exception as e:
-        logger.error(f"Error fetching form data for service: {str(e)}")
-        await send_error_message(update, f"خطأ في جلب بيانات النموذج: {str(e)}")
-        return ConversationState.SELECT_SERVICE
+        logger.error(f"Error starting form: {str(e)}")
+        return await error_handler.handle_validation_error(
+            update, context, None, f"خطأ في بدء النموذج: {str(e)}"
+        )
 
 async def select_other_subject(update: Update, context) -> int:
     update_last_activity(context)
@@ -1363,20 +1245,17 @@ async def select_other_subject(update: Update, context) -> int:
             'name': selected_text
         }
         
-        form_data = await api_service.get_form_data(
+        # جلب النموذج
+        response = await api_service.get_form(
             request_type_id=context.user_data['request_type']['id'],
-            request_subject_id=context.user_data['selected_subject_id'],
-            other_subject_id=selected_other_subject['id'],
-            side_id=context.user_data['side_id']
+            complaint_subject_id=context.user_data['selected_subject_id'],
+            other_subject_id=selected_other_subject['id']
         )
         
-        context.user_data['form'] = DynamicForm(form_data)
-        first_field = context.user_data['form'].get_next_field(context)
-        if first_field:
-            return await show_form_field(update, context, first_field)
-        else:
-            await update.message.reply_text('لا توجد حقول في النموذج.')
-            return ConversationHandler.END
+        form = DynamicForm.from_dict(response)
+        
+        # بدء النموذج المحسن
+        return await form_handler.start_form_filling(update, context, form)
     except Exception as e:
         logger.error(f"Error fetching form data for other subject: {str(e)}")
         await send_error_message(update, f"خطأ في جلب بيانات النموذج: {str(e)}")
@@ -1590,6 +1469,85 @@ async def main_menu_handler(update: Update, context) -> int:
     # Redirect to main_menu to handle any stray text input
     return await main_menu(update, context)
 
+async def handle_location_improved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة محسنة للموقع"""
+    try:
+        # الحصول على الحقل الحالي
+        progress_tracker = context.user_data.get('form_progress')
+        if not progress_tracker:
+            await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
+            return ConversationHandler.END
+            
+        current_field = progress_tracker.get_current_field()
+        if not current_field or not hasattr(current_field, 'type_code') or current_field.type_code != 'map':
+            await update.message.reply_text("هذا الحقل لا يتطلب موقع.")
+            return ConversationState.FILL_FORM
+            
+        # استخدام معالج الموقع المحسن
+        success, message, location_data = await location_handler.handle_location_input(
+            update, context, current_field
+        )
+        
+        if success:
+            # حفظ البيانات
+            field_state = progress_tracker.field_states[str(current_field.id)]
+            field_state.set_value(location_data)
+            
+            # الانتقال للحقل التالي
+            return await form_handler.go_to_next_field(update, context)
+        else:
+            await update.message.reply_text(f"❌ {message}")
+            return ConversationState.FILL_FORM
+            
+    except Exception as e:
+        logger.error(f"Error handling location: {str(e)}")
+        return await error_handler.handle_validation_error(
+            update, context, None, f"خطأ في معالجة الموقع: {str(e)}"
+        )
+
+async def handle_attachment_improved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """معالجة محسنة للمرفقات"""
+    try:
+        # الحصول على الحقل الحالي
+        progress_tracker = context.user_data.get('form_progress')
+        if not progress_tracker:
+            await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
+            return ConversationHandler.END
+            
+        current_field = progress_tracker.get_current_field()
+        if not current_field or not isinstance(current_field, FormDocument):
+            await update.message.reply_text("هذا الحقل لا يتطلب ملف.")
+            return ConversationState.FILL_FORM
+            
+        # استخدام معالج الملفات المحسن
+        success, message, file_id = await file_handler.handle_file_upload(
+            update, context, current_field
+        )
+        
+        if success:
+            # حفظ البيانات
+            field_state = progress_tracker.field_states[str(current_field.id)]
+            field_state.add_attachment(file_id, "uploaded_file")
+            
+            # عرض رسالة نجاح
+            await update.message.reply_text(f"✅ {message}")
+            
+            # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
+            if not current_field.is_multi:
+                return await form_handler.go_to_next_field(update, context)
+            else:
+                # إعادة عرض الحقل للملفات الإضافية
+                return await form_handler.show_current_field(update, context)
+        else:
+            await update.message.reply_text(f"❌ {message}")
+            return ConversationState.FILL_FORM
+            
+    except Exception as e:
+        logger.error(f"Error handling attachment: {str(e)}")
+        return await error_handler.handle_validation_error(
+            update, context, None, f"خطأ في معالجة الملف: {str(e)}"
+        )
+
 
 
 async def main():
@@ -1620,9 +1578,9 @@ async def main():
             ConversationState.SELECT_COMPLAINT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_subject)],
             ConversationState.SELECT_COMPLIMENT_SIDE: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_compliment_side)],
             ConversationState.FILL_FORM: [
-                    MessageHandler(filters.LOCATION, handle_location),
+                    MessageHandler(filters.LOCATION, handle_location_improved),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, fill_form),
-                    MessageHandler(filters.ATTACHMENT, fill_form),
+                    MessageHandler(filters.ATTACHMENT, handle_attachment_improved),
                 ],
             ConversationState.SELECT_SERVICE_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_service_category)],
             ConversationState.COLLECT_FORM_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_form_field)],

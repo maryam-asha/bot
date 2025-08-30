@@ -220,6 +220,11 @@ class DynamicForm:
         self.data: Dict[str, Any] = {}
         self.document_data: Dict[str, List[str]] = {}
         self.errors: Dict[str, str] = {}
+    
+    @classmethod
+    def from_dict(cls, form_data: Dict[str, Any]) -> 'DynamicForm':
+        """إنشاء نموذج من البيانات المستلمة من API"""
+        return cls(form_data)
 
     def get_field_by_id(self, field_id):
         """Find a field object by its ID."""
