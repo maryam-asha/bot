@@ -1,0 +1,78 @@
+{
+  "summary": {
+    "total_files": 25,
+    "total_lines": 5599,
+    "issues_found": 6
+  },
+  "issues": {
+    "total_files": 25,
+    "total_lines": 5599,
+    "large_files": [
+      {
+        "file": "bot.py",
+        "lines": 1666,
+        "recommendation": "Consider breaking into smaller modules"
+      },
+      {
+        "file": "bot_improved.py",
+        "lines": 724,
+        "recommendation": "Consider breaking into smaller modules"
+      },
+      {
+        "file": "services/api_service.py",
+        "lines": 549,
+        "recommendation": "Consider breaking into smaller modules"
+      }
+    ],
+    "complex_functions": [
+      {
+        "file": "forms/form_model.py",
+        "function": "validate",
+        "complexity": 33,
+        "lines": 123,
+        "recommendation": "Consider breaking into smaller functions"
+      },
+      {
+        "file": "forms/form_model.py",
+        "function": "get_next_field",
+        "complexity": 11,
+        "lines": 32,
+        "recommendation": "Consider breaking into smaller functions"
+      }
+    ],
+    "async_issues": [],
+    "import_issues": [],
+    "memory_issues": [
+      {
+        "file": "performance_analysis.py",
+        "line": 53,
+        "issue": "Large file read operation",
+        "recommendation": "Use streaming or chunked reading for large files"
+      }
+    ]
+  },
+  "recommendations": [
+    {
+      "category": "Code Structure",
+      "issue": "Found 3 large files",
+      "recommendation": "Break large files into smaller, focused modules",
+      "impact": "High"
+    },
+    {
+      "category": "Function Complexity",
+      "issue": "Found 2 complex functions",
+      "recommendation": "Refactor complex functions into smaller, testable units",
+      "impact": "Medium"
+    }
+  ],
+  "optimization_impact": {
+    "performance_improvement": "0%",
+    "memory_usage_reduction": "10%",
+    "startup_time_improvement": "0%",
+    "maintenance_score_improvement": "30%"
+  },
+  "dependencies": {
+    "heavy_packages": [],
+    "optimization_suggestions": []
+  }
+}

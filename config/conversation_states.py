@@ -22,6 +22,14 @@ class ConversationState(IntEnum):
     COLLECT_FORM_FIELD = 16
     SELECT_OTHER_SUBJECT = 17
     SELECT_TIME_AM_PM = 18
+    
+    # حالات جديدة مطلوبة للسيناريو الجديد
+    AUTH_CHECK = 19
+    VIEW_REQUESTS = 20
+    VIEW_REQUEST_DETAILS = 21
+    SELECT_ENTITY = 22
+    SELECT_ENTITY_CHILDREN = 23
+    SELECT_SUBJECTS = 24
 
 # State transition mapping for better navigation
 STATE_TRANSITIONS: Dict[ConversationState, ConversationState] = {
@@ -37,7 +45,20 @@ STATE_TRANSITIONS: Dict[ConversationState, ConversationState] = {
     ConversationState.SELECT_REQUEST_NUMBER: ConversationState.SERVICE_MENU,
     ConversationState.ENTER_OTP: ConversationState.ENTER_MOBILE,
     ConversationState.ENTER_MOBILE: ConversationState.SERVICE_MENU,
-    ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM
+    ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM,
+    
+    # انتقالات جديدة للسيناريو الجديد
+    ConversationState.AUTH_CHECK: ConversationState.ENTER_MOBILE,
+    ConversationState.ENTER_MOBILE: ConversationState.ENTER_OTP,
+    ConversationState.ENTER_OTP: ConversationState.SERVICE_MENU,
+    ConversationState.SERVICE_MENU: ConversationState.VIEW_REQUESTS,
+    ConversationState.SERVICE_MENU: ConversationState.SELECT_ENTITY,
+    ConversationState.SELECT_ENTITY: ConversationState.SELECT_ENTITY_CHILDREN,
+    ConversationState.SELECT_ENTITY_CHILDREN: ConversationState.SELECT_REQUEST_TYPE,
+    ConversationState.SELECT_REQUEST_TYPE: ConversationState.SELECT_SUBJECTS,
+    ConversationState.SELECT_SUBJECTS: ConversationState.FILL_FORM,
+    ConversationState.VIEW_REQUESTS: ConversationState.VIEW_REQUEST_DETAILS,
+    ConversationState.VIEW_REQUEST_DETAILS: ConversationState.VIEW_REQUESTS,
 }
 
 def get_previous_state(current_state: ConversationState) -> ConversationState:
