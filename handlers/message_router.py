@@ -54,9 +54,15 @@ class MessageRouter:
             ConversationState.COLLECT_FORM_FIELD: self.form_handler,
             ConversationState.CONFIRM_SUBMISSION: self.form_handler,
             
-            # Special states
-            ConversationState.ERROR: self.main_menu_handler,
-            ConversationState.HELP: self.main_menu_handler,
+            # Legacy states (keeping for backward compatibility)
+            ConversationState.SELECT_COMPLAINT_TYPE: self.request_handler,
+            ConversationState.SELECT_SUBJECT: self.request_handler,
+            ConversationState.SELECT_COMPLAINT_SUBJECT: self.request_handler,
+            ConversationState.SELECT_OTHER_SUBJECT: self.request_handler,
+            ConversationState.SELECT_TIME_AM_PM: self.form_handler,
+            ConversationState.SELECT_REQUEST_NUMBER: self.service_menu_handler,
+            ConversationState.SELECT_SIDE: self.request_handler,
+            ConversationState.SELECT_SERVICE_HIERARCHY: self.request_handler,
         }
         
     @monitor_async_performance
