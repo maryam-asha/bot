@@ -26,20 +26,37 @@ class MessageRouter:
         
         # Define state to handler mapping
         self.state_handlers = {
-            ConversationState.MAIN_MENU: self.main_menu_handler,
-            ConversationState.SERVICE_MENU: self.service_menu_handler,
+            # Authentication states
+            ConversationState.AUTH_CHECK: self.auth_handler,
             ConversationState.ENTER_MOBILE: self.auth_handler,
             ConversationState.ENTER_OTP: self.auth_handler,
+            
+            # Main menu
+            ConversationState.MAIN_MENU: self.main_menu_handler,
+            
+            # Service menu
+            ConversationState.SERVICE_MENU: self.service_menu_handler,
+            
+            # View requests
+            ConversationState.VIEW_REQUESTS: self.service_menu_handler,
+            ConversationState.VIEW_REQUEST_DETAILS: self.service_menu_handler,
+            
+            # Submit new request
+            ConversationState.SELECT_ENTITY: self.request_handler,
+            ConversationState.SELECT_ENTITY_CHILDREN: self.request_handler,
             ConversationState.SELECT_REQUEST_TYPE: self.request_handler,
-            ConversationState.SELECT_COMPLIMENT_SIDE: self.request_handler,
-            ConversationState.SELECT_SUBJECT: self.request_handler,
-            ConversationState.SELECT_OTHER_SUBJECT: self.request_handler,
+            ConversationState.SELECT_SUBJECTS: self.request_handler,
             ConversationState.SELECT_SERVICE_CATEGORY: self.request_handler,
             ConversationState.SELECT_SERVICE: self.request_handler,
+            
+            # Form handling
             ConversationState.FILL_FORM: self.form_handler,
             ConversationState.COLLECT_FORM_FIELD: self.form_handler,
             ConversationState.CONFIRM_SUBMISSION: self.form_handler,
-            ConversationState.SELECT_REQUEST_NUMBER: self.service_menu_handler,
+            
+            # Special states
+            ConversationState.ERROR: self.main_menu_handler,
+            ConversationState.HELP: self.main_menu_handler,
         }
         
     @monitor_async_performance
@@ -77,13 +94,13 @@ class MessageRouter:
         text = update.message.text
         
         if text == '/start':
-            # Reset to main menu
+            # Start with authentication check
             context.user_data.clear()
-            context.user_data['current_state'] = ConversationState.MAIN_MENU
-            return await self.main_menu_handler.show_main_menu(update, context, "مرحباً بك في منصة صوتك! 👋")
+            context.user_data['current_state'] = ConversationState.AUTH_CHECK
+            return await self.auth_handler._check_auth_status(update, context)
             
         elif text == '/cancel':
-            # Cancel current operation
+            # Cancel current operation and return to main menu
             context.user_data.clear()
             context.user_data['current_state'] = ConversationState.MAIN_MENU
             return await self.main_menu_handler.show_main_menu(update, context, "تم إلغاء العملية. يمكنك البدء من جديد.")
@@ -96,7 +113,12 @@ class MessageRouter:
 /start - بدء البوت من جديد
 /cancel - إلغاء العملية الحالية
 /help - عرض هذه المساعدة
-/location - إرسال الموقع
+
+**تدفق العمل:**
+1. تسجيل الدخول (إذا لم تكن مصادق عليه)
+2. اختيار "سمعنا صوتك"
+3. عرض الطلبات أو تقديم طلب جديد
+4. ملء النموذج وتأكيد الإرسال
             """
             await update.message.reply_text(help_text)
             return context.user_data.get('current_state', ConversationState.MAIN_MENU)
@@ -138,7 +160,12 @@ class MessageRouter:
             "تم استقبال الملف بنجاح! 📄",
             reply_markup=None
         )
-        return current_state
+        
+        if current_state == ConversationState.FILL_FORM:
+            # Route document to form handler
+            return ConversationState.FILL_FORM
+        else:
+            return current_state
             
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle photo uploads"""
@@ -148,7 +175,12 @@ class MessageRouter:
             "تم استقبال الصورة بنجاح! 📷",
             reply_markup=None
         )
-        return current_state
+        
+        if current_state == ConversationState.FILL_FORM:
+            # Route photo to form handler
+            return ConversationState.FILL_FORM
+        else:
+            return current_state
             
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle voice messages"""
@@ -158,16 +190,21 @@ class MessageRouter:
             "تم استقبال الرسالة الصوتية بنجاح! 🎤",
             reply_markup=None
         )
-        return current_state
+        
+        if current_state == ConversationState.FILL_FORM:
+            # Route voice to form handler
+            return ConversationState.FILL_FORM
+        else:
+            return current_state
             
-    async def get_handler_for_state(self, state: ConversationState):
+    def get_handler_for_state(self, state: ConversationState):
         """Get handler for specific state"""
         return self.state_handlers.get(state)
         
-    async def set_state_handler(self, state: ConversationState, handler):
-        """Set custom handler for specific state"""
+    def set_state_handler(self, state: ConversationState, handler):
+        """Set handler for specific state"""
         self.state_handlers[state] = handler
         
     def get_available_states(self):
-        """Get list of available states with handlers"""
+        """Get list of available states"""
         return list(self.state_handlers.keys())

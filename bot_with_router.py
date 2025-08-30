@@ -2,11 +2,11 @@ import logging
 import asyncio
 import signal
 import sys
-from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
+from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram import Update
 from services.api_service import ApiService
-from handlers.message_router import MessageRouter
 from config.settings import settings
+from handlers.message_router import MessageRouter
 from utils.performance_monitor import performance_monitor, monitor_async_performance
 from utils.cache_manager import cache_manager
 
@@ -18,19 +18,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class RouterBot:
-    """Bot محسن باستخدام نظام Router مع handlers منفصلة"""
+    """Bot مع نظام التوجيه المتطور"""
     
     def __init__(self):
         self.api_service: ApiService = None
-        self.application = None
         self.message_router: MessageRouter = None
+        self.application = None
         
         # Performance monitoring
         performance_monitor.enable_tracemalloc()
         
     @monitor_async_performance
     async def initialize(self):
-        """تهيئة البوت مع مراقبة الأداء"""
+        """تهيئة البوت"""
         try:
             # بدء مدير التخزين المؤقت
             await cache_manager.start()
@@ -42,7 +42,7 @@ class RouterBot:
             # تهيئة موجه الرسائل
             self.message_router = MessageRouter(self.api_service)
             
-            # بناء التطبيق مع إعدادات محسنة
+            # بناء التطبيق
             self.application = Application.builder().token(settings.telegram_token).build()
             
             # إعداد المعالجات
@@ -56,7 +56,7 @@ class RouterBot:
             
     async def _setup_handlers(self):
         """إعداد معالجات المحادثة"""
-        # معالج الأوامر الخاصة
+        # معالج الأوامر
         self.application.add_handler(CommandHandler('start', self._handle_start_command))
         self.application.add_handler(CommandHandler('cancel', self._handle_cancel_command))
         self.application.add_handler(CommandHandler('help', self._handle_help_command))
@@ -73,7 +73,7 @@ class RouterBot:
             self._handle_location_message
         ))
         
-        # معالج الملفات والوثائق
+        # معالج الملفات
         self.application.add_handler(MessageHandler(
             filters.Document.ALL,
             self._handle_document_message
@@ -193,7 +193,8 @@ class RouterBot:
                 drop_pending_updates=True
             )
             
-            logger.info("البوت يعمل مع مراقبة الأداء...")
+            logger.info("البوت يعمل مع نظام التوجيه المتطور... 🚀")
+            logger.info("اضغط Ctrl+C لإيقاف البوت")
             
             # حلقة مراقبة الأداء
             while True:

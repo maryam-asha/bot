@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
@@ -10,13 +11,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MainMenuHandler(BaseHandler):
-    """Handler for main menu interactions"""
+    """Handler for main menu operations"""
     
-    # Menu options and responses
     MAIN_MENU_OPTIONS = [
-        "حول المنصة", 
+        "حول المنصة",
         "حول الوزارة", 
-        "حول الشركة المطورة", 
+        "حول الشركة المطورة",
         "سمعنا صوتك"
     ]
     
@@ -43,7 +43,7 @@ class MainMenuHandler(BaseHandler):
                 await self._show_info_response(update, context, user_input)
                 return ConversationState.MAIN_MENU
             
-            # Handle service access
+            # Handle service access - this requires authentication
             elif user_input == "سمعنا صوتك":
                 return await self._handle_service_access(update, context)
             
@@ -62,33 +62,30 @@ class MainMenuHandler(BaseHandler):
         await self.show_main_menu(update, context, response_text)
     
     async def _handle_service_access(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
-        """Handle service access request"""
-        # Use auth_handler to check authentication
-        if hasattr(self, 'auth_handler') and self.auth_handler:
+        """Handle service access request - requires authentication"""
+        # Check authentication status
+        if self.auth_handler:
             is_authenticated = await self.auth_handler.is_authenticated(context)
         else:
             # Fallback to user_data check
-            is_authenticated = self.get_user_data(context, 'authenticated', False)
+            is_authenticated = self.get_user_data(context, 'user_authenticated', False)
         
         if is_authenticated:
             logger.info("User authenticated, transitioning to SERVICE_MENU")
+            # Update token activity
+            if self.auth_handler:
+                await self.auth_handler.update_token_activity(context)
+            
             await update.message.reply_text(
-                "يرجى اختيار الخدمة",
+                "مرحباً بك في قائمة الخدمات! 🚀\n\nاختر ما تريد القيام به:",
                 reply_markup=self._get_service_menu_keyboard()
             )
             return ConversationState.SERVICE_MENU
         else:
-            logger.info("User not authenticated, requesting mobile number")
-            # Clear authentication data
-            self.set_user_data(context, 'authenticated', None)
-            self.set_user_data(context, 'auth_token', None)
-            self.set_user_data(context, 'mobile', None)
-            
-            await update.message.reply_text(
-                "يرجى تسجيل الدخول أولاً. أدخل رقم هاتفك المحمول:",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return ConversationState.ENTER_MOBILE
+            logger.info("User not authenticated, starting authentication flow")
+            # Start authentication flow
+            context.user_data['current_state'] = ConversationState.AUTH_CHECK
+            return ConversationState.AUTH_CHECK
     
     async def _show_invalid_input_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Show message for invalid input"""
@@ -96,7 +93,7 @@ class MainMenuHandler(BaseHandler):
     
     async def show_main_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message: Optional[str] = None) -> None:
         """Show main menu with optional message"""
-        default_message = "☑️ YourVoiceSyBot v1.0.0"
+        default_message = "☑️ YourVoiceSyBot v1.0.0\n\nاختر من القائمة أدناه:"
         display_message = message or default_message
         
         await update.message.reply_text(
@@ -116,8 +113,8 @@ class MainMenuHandler(BaseHandler):
     def _get_service_menu_keyboard(self) -> ReplyKeyboardMarkup:
         """Get service menu keyboard"""
         keyboard = [
-            ["تقديم طلب"],
-            ["طلباتي"]
+            ["طلباتي", "تقديم طلب"],
+            ["عودة للقائمة الرئيسية"]
         ]
         return ReplyKeyboardMarkup(
             keyboard=keyboard,
