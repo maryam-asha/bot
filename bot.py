@@ -4,9 +4,9 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, U
 from datetime import datetime, timedelta
 from services.api_service import ApiService
 from forms.form_model import FormAttribute, FormDocument, DynamicForm
-from handlers.form_handler_improved import ImprovedFormHandler
-from handlers.form_file_handler import FormFileHandler, FormLocationHandler
-from handlers.form_error_handler import FormErrorHandler, FormDataSanitizer
+from form_handler_improved import ImprovedFormHandler
+from form_file_handler import FormFileHandler, FormLocationHandler
+from form_error_handler import FormErrorHandler, FormDataSanitizer
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers.base_handler import BaseHandler
 from handlers.main_menu_handler import MainMenuHandler
