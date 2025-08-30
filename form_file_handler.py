@@ -43,7 +43,7 @@ class FormFileHandler:
                 return False, validation_result[1], None
                 
             # رفع الملف
-            upload_result = await self.upload_file_to_server(file_info)
+            upload_result = await self.upload_file_to_server(file_info, context)
             if not upload_result[0]:
                 return False, upload_result[1], None
                 
@@ -141,11 +141,11 @@ class FormFileHandler:
                 
         return True, ""
         
-    async def upload_file_to_server(self, file_info: Dict) -> tuple[bool, str, Optional[str]]:
+    async def upload_file_to_server(self, file_info: Dict, context: ContextTypes.DEFAULT_TYPE) -> tuple[bool, str, Optional[str]]:
         """رفع الملف للخادم"""
         try:
             # تحميل الملف من تيليجرام
-            file_data = await self.download_file_from_telegram(file_info['file_id'])
+            file_data = await self.download_file_from_telegram(file_info['file_id'], context)
             if not file_data:
                 return False, "فشل في تحميل الملف من تيليجرام", None
                 
@@ -160,12 +160,20 @@ class FormFileHandler:
             logger.error(f"Error uploading file to server: {str(e)}")
             return False, f"حدث خطأ أثناء رفع الملف: {str(e)}", None
             
-    async def download_file_from_telegram(self, file_id: str) -> Optional[bytes]:
+    async def download_file_from_telegram(self, file_id: str, context: ContextTypes.DEFAULT_TYPE) -> Optional[bytes]:
         """تحميل الملف من تيليجرام"""
         try:
-            # هنا نحتاج للوصول لـ bot instance
-            # سنقوم بتمريرها من الخارج
-            return None
+            # الحصول على bot instance من context
+            bot = context.bot
+            
+            # تحميل معلومات الملف
+            file_info = await bot.get_file(file_id)
+            
+            # تحميل محتوى الملف
+            file_data = await file_info.download_as_bytearray()
+            
+            return bytes(file_data)
+            
         except Exception as e:
             logger.error(f"Error downloading file from Telegram: {str(e)}")
             return None

@@ -583,20 +583,108 @@ async def select_compliment_side(update: Update, context) -> int:
 
 
 async def fill_form(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """معالجة محسنة لملء النموذج"""
-    try:
-        # استخدام المعالج المحسن
-        return await form_handler.handle_field_input(update, context)
-    except Exception as e:
-        logger.error(f"Error in improved form handler: {str(e)}")
-        # استخدام معالج الأخطاء المحسن
-        if error_handler:
-            return await error_handler.handle_validation_error(
-                update, context, None, f"حدث خطأ: {str(e)}"
-            )
+    """معالجة مبسطة لملء النموذج"""
+    update_last_activity(context)
+    form = context.user_data.get('form')
+    if not form:
+        logger.error("No form found in user_data")
+        await send_error_message(update, 'حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.')
+        return ConversationHandler.END
+
+    # Handle back button - go to previous field
+    if update.message.text == '▶️ الرجوع':
+        return await go_back_to_previous_field(update, context, form)
+    
+    # Handle main menu button
+    if update.message.text == MAIN_MENU_BUTTON:
+        await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
+        return ConversationState.MAIN_MENU
+
+    # Get current field (either from context or next field)
+    current_field = context.user_data.get('current_form_field')
+    if not current_field:
+        current_field = form.get_next_field(context)
+        if not current_field:
+            logger.debug("No next field found, showing summary")
+            return await show_form_summary(update, context)
+        # Store current field in context for back navigation
+        context.user_data['current_form_field'] = current_field
+        context.user_data['form_field_history'] = context.user_data.get('form_field_history', [])
+
+    user_input = update.message.text if update.message.text else None
+
+    if isinstance(current_field, FormDocument):
+        # Handle document upload
+        if user_input == 'تم' and current_field.is_multi:
+            # Finish multi-upload
+            return await move_to_next_field(update, context, form)
+            
+        elif user_input == 'التالي' and not current_field.required:
+            form.skip_field(str(current_field.id))
+            return await move_to_next_field(update, context, form)
+            
         else:
-            await update.message.reply_text("حدث خطأ غير متوقع. حاول مرة أخرى.")
-            return ConversationState.MAIN_MENU
+            await send_error_message(update, 'يرجى رفع ملف صالح')
+            return ConversationState.FILL_FORM
+
+    else:  # FormAttribute
+        if user_input == 'التالي' and not current_field.required:
+            form.skip_field(str(current_field.id))
+            return await move_to_next_field(update, context, form)
+
+        # Handle special types and get processed value
+        processed_value = user_input
+        if current_field.type_code == 'switch':
+            if user_input == 'نعم':
+                processed_value = 'true'
+            elif user_input == 'لا':
+                processed_value = 'false'
+            else:
+                processed_value = None
+        elif current_field.type_code == 'time':
+            try:
+                # Try parsing only HH:MM (no AM/PM yet)
+                input_time = datetime.strptime(user_input.strip(), "%I:%M").time()
+                context.user_data['temp_time_input'] = user_input.strip()
+                context.user_data['pending_time_field_id'] = current_field.id
+                await update.message.reply_text(
+                    "يرجى اختيار AM أو PM:",
+                    reply_markup=await create_reply_keyboard([['AM', 'PM'], ['▶️ الرجوع', MAIN_MENU_BUTTON]])
+                )
+                return ConversationState.SELECT_TIME_AM_PM
+            except ValueError:
+                await send_error_message(update, "يرجى إدخال وقت بالصيغة hh:mm ")
+                return ConversationState.FILL_FORM
+            
+        elif current_field.type_code in ['options', 'autocomplete', 'multi_options', 'multiple_autocomplete']:
+            # Find ID from name (for options/autocomplete)
+            selected_option = next((opt for opt in current_field.options if opt['name'] == user_input), None)
+            if selected_option:
+                processed_value = str(selected_option['id'])
+            else:
+                processed_value = None
+            if current_field.type_code in ['multi_options', 'multiple_autocomplete']:
+                if user_input == 'تم':
+                    # Finish multi-select, join selected IDs
+                    processed_value = ','.join(current_field.selected_values)
+                else:
+                    selected_option = next((opt for opt in current_field.options if opt['name'] == user_input), None)
+                    if selected_option:
+                        current_field.selected_values.append(str(selected_option['id']))
+                    await show_form_field(update, context, current_field)
+                    return ConversationState.FILL_FORM
+
+        # Apply validation
+        is_valid, error = current_field.validate(processed_value)
+        if not is_valid:
+            await send_error_message(update, error)
+            return ConversationState.FILL_FORM
+
+        # Store value
+        form.data[str(current_field.id)] = processed_value
+
+        # Move to next field
+        return await move_to_next_field(update, context, form)
 
 
 
@@ -1110,15 +1198,20 @@ async def select_subject(update: Update, context) -> int:
                 )
                 
                 form = DynamicForm.from_dict(response)
+                context.user_data['form'] = form
                 
-                # بدء النموذج المحسن
-                return await form_handler.start_form_filling(update, context, form)
+                # عرض الحقل الأول
+                first_field = form.get_next_field(context)
+                if first_field:
+                    return await show_form_field(update, context, first_field)
+                else:
+                    await update.message.reply_text('لا توجد حقول في النموذج.')
+                    return ConversationHandler.END
                 
             except Exception as e:
                 logger.error(f"Error starting form: {str(e)}")
-                return await error_handler.handle_validation_error(
-                    update, context, None, f"خطأ في بدء النموذج: {str(e)}"
-                )
+                await send_error_message(update, f"خطأ في بدء النموذج: {str(e)}")
+                return ConversationState.SERVICE_MENU
     except Exception as e:
         logger.error(f"Error processing subject selection: {str(e)}")
         await send_error_message(update, f"خطأ في معالجة الموضوع: {str(e)}")
@@ -1204,15 +1297,20 @@ async def select_service(update: Update, context) -> int:
         )
         
         form = DynamicForm.from_dict(response)
+        context.user_data['form'] = form
         
-        # بدء النموذج المحسن
-        return await form_handler.start_form_filling(update, context, form)
+        # عرض الحقل الأول
+        first_field = form.get_next_field(context)
+        if first_field:
+            return await show_form_field(update, context, first_field)
+        else:
+            await update.message.reply_text('لا توجد حقول في النموذج.')
+            return ConversationHandler.END
         
     except Exception as e:
         logger.error(f"Error starting form: {str(e)}")
-        return await error_handler.handle_validation_error(
-            update, context, None, f"خطأ في بدء النموذج: {str(e)}"
-        )
+        await send_error_message(update, f"خطأ في بدء النموذج: {str(e)}")
+        return ConversationState.SELECT_SERVICE
 
 async def select_other_subject(update: Update, context) -> int:
     update_last_activity(context)
@@ -1274,15 +1372,18 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
         await send_error_message(update, 'حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.')
         return ConversationHandler.END
     
-    # Set current field and initialize history (do this early for all fields, including map)
+    # Set current field and initialize history
     context.user_data['current_form_field'] = field
-    context.user_data.setdefault('form_field_history', [])  # Initialize if not present
+    context.user_data.setdefault('form_field_history', [])
     
-    # Check if we can go back (if there are previous fields in history)
+    # Check if we can go back
     can_go_back = bool(context.user_data['form_field_history'])
     
     if isinstance(field, FormDocument):
-        message = f"يرجى رفع {field.documents_type_name}.\nالملفات المسموحة: {', '.join(field.accept_extension)}"
+        # عرض اسم المجموعة أولاً
+        group_name = next((group.name for group in form.groups if any(doc.id == field.id for doc in group.documents)), "")
+        message = f"{group_name}\nيرجى رفع {field.documents_type_name}.\nالملفات المسموحة: {', '.join(field.accept_extension)}"
+        
         keyboard = []
         current_file_ids = form.document_data.get(field.id, [])
         if field.is_multi:
@@ -1300,7 +1401,9 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
             reply_markup=await create_reply_keyboard(keyboard, include_back=can_go_back, include_main_menu=True)
         )
     else:
+        # عرض اسم المجموعة أولاً
         group_name = next((group.name for group in form.groups if any(attr.id == field.id for attr in group.attributes)), "")
+        
         if field.type_code == "switch":
             keyboard = [["نعم", "لا"]]
             if not field.required:
@@ -1313,6 +1416,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
                 reply_markup=await create_reply_keyboard(keyboard)
             )
             return ConversationState.FILL_FORM
+            
         if field.type_code in ["options", "autocomplete", "multiple_autocomplete", "multi_options"]:
             options = await field.get_autocomplete_options(api_service) if field.type_code in ["autocomplete", "multiple_autocomplete"] else field.options
             option_names = [option['name'] for option in options]
@@ -1331,8 +1435,8 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
                 reply_markup=await create_reply_keyboard(keyboard, one_time=True)
             )
             return ConversationState.FILL_FORM
+            
         if field.type_code == "map":
-            group_name = next((group.name for group in form.groups if any(attr.id == field.id for attr in group.attributes)), "")
             message = f"{group_name}\nيرجى مشاركة موقعك من الخريطة باستخدام الزر أدناه (لا يمكن إدخال النص يدويًا):"
             if field.example:
                 message += f"\nمثال: {field.example}"
@@ -1341,6 +1445,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
                 reply_markup=await create_location_keyboard(include_back=can_go_back, include_main_menu=True)
             )
             return ConversationState.FILL_FORM
+            
         else:
             keyboard = []
             if not field.required:
@@ -1475,13 +1580,13 @@ async def main_menu_handler(update: Update, context) -> int:
 async def handle_location_improved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """معالجة محسنة للموقع"""
     try:
-        # الحصول على الحقل الحالي
-        progress_tracker = context.user_data.get('form_progress')
-        if not progress_tracker:
+        # الحصول على الحقل الحالي من النموذج
+        form = context.user_data.get('form')
+        if not form:
             await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
             return ConversationHandler.END
             
-        current_field = progress_tracker.get_current_field()
+        current_field = context.user_data.get('current_form_field')
         if not current_field or not hasattr(current_field, 'type_code') or current_field.type_code != 'map':
             await update.message.reply_text("هذا الحقل لا يتطلب موقع.")
             return ConversationState.FILL_FORM
@@ -1492,32 +1597,30 @@ async def handle_location_improved(update: Update, context: ContextTypes.DEFAULT
         )
         
         if success:
-            # حفظ البيانات
-            field_state = progress_tracker.field_states[str(current_field.id)]
-            field_state.set_value(location_data)
+            # حفظ البيانات في النموذج
+            form.data[str(current_field.id)] = location_data
             
             # الانتقال للحقل التالي
-            return await form_handler.go_to_next_field(update, context)
+            return await move_to_next_field(update, context, form)
         else:
             await update.message.reply_text(f"❌ {message}")
             return ConversationState.FILL_FORM
             
     except Exception as e:
         logger.error(f"Error handling location: {str(e)}")
-        return await error_handler.handle_validation_error(
-            update, context, None, f"خطأ في معالجة الموقع: {str(e)}"
-        )
+        await update.message.reply_text(f"حدث خطأ في معالجة الموقع: {str(e)}")
+        return ConversationState.FILL_FORM
 
 async def handle_attachment_improved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """معالجة محسنة للمرفقات"""
     try:
-        # الحصول على الحقل الحالي
-        progress_tracker = context.user_data.get('form_progress')
-        if not progress_tracker:
+        # الحصول على الحقل الحالي من النموذج
+        form = context.user_data.get('form')
+        if not form:
             await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
             return ConversationHandler.END
             
-        current_field = progress_tracker.get_current_field()
+        current_field = context.user_data.get('current_form_field')
         if not current_field or not isinstance(current_field, FormDocument):
             await update.message.reply_text("هذا الحقل لا يتطلب ملف.")
             return ConversationState.FILL_FORM
@@ -1528,28 +1631,28 @@ async def handle_attachment_improved(update: Update, context: ContextTypes.DEFAU
         )
         
         if success:
-            # حفظ البيانات
-            field_state = progress_tracker.field_states[str(current_field.id)]
-            field_state.add_attachment(file_id, "uploaded_file")
+            # حفظ البيانات في النموذج
+            if current_field.id not in form.document_data:
+                form.document_data[current_field.id] = []
+            form.document_data[current_field.id].append(file_id)
             
             # عرض رسالة نجاح
             await update.message.reply_text(f"✅ {message}")
             
             # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
             if not current_field.is_multi:
-                return await form_handler.go_to_next_field(update, context)
+                return await move_to_next_field(update, context, form)
             else:
                 # إعادة عرض الحقل للملفات الإضافية
-                return await form_handler.show_current_field(update, context)
+                return await show_form_field(update, context, current_field)
         else:
             await update.message.reply_text(f"❌ {message}")
             return ConversationState.FILL_FORM
             
     except Exception as e:
         logger.error(f"Error handling attachment: {str(e)}")
-        return await error_handler.handle_validation_error(
-            update, context, None, f"خطأ في معالجة الملف: {str(e)}"
-        )
+        await update.message.reply_text(f"حدث خطأ في معالجة الملف: {str(e)}")
+        return ConversationState.FILL_FORM
 
 
 
