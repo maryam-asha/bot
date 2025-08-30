@@ -4,9 +4,9 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, U
 from datetime import datetime, timedelta
 from services.api_service import ApiService
 from forms.form_model import FormAttribute, FormDocument, DynamicForm
-from form_handler_improved import ImprovedFormHandler
-from form_file_handler import FormFileHandler, FormLocationHandler
-from form_error_handler import FormErrorHandler, FormDataSanitizer
+from handlers.form_handler_improved import ImprovedFormHandler
+from handlers.form_file_handler import FormFileHandler, FormLocationHandler
+from handlers.form_error_handler import FormErrorHandler, FormDataSanitizer
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers.base_handler import BaseHandler
 from handlers.main_menu_handler import MainMenuHandler
@@ -665,6 +665,8 @@ async def go_back_to_previous_field(update: Update, context, form) -> int:
     await show_form_field(update, context, previous_field)
     return ConversationState.FILL_FORM
 
+
+
 async def move_to_next_field(update: Update, context, form) -> int:
     """Move to the next form field"""
     # Add current field to history for back navigation
@@ -1102,9 +1104,9 @@ async def select_subject(update: Update, context) -> int:
         else:
             try:
                 # جلب النموذج
-                response = await api_service.get_form(
+                response = await api_service.get_form_data(
                     request_type_id=context.user_data['request_type']['id'],
-                    complaint_subject_id=selected_subject['id']
+                    request_subject_id=selected_subject['id']
                 )
                 
                 form = DynamicForm.from_dict(response)
@@ -1195,9 +1197,9 @@ async def select_service(update: Update, context) -> int:
     
     try:
         # جلب النموذج
-        response = await api_service.get_form(
+        response = await api_service.get_form_data(
             request_type_id=context.user_data['request_type']['id'],
-            complaint_subject_id=context.user_data['selected_subject_id'],
+            request_subject_id=context.user_data['selected_subject_id'],
             complaint_service_id=selected_service['value']
         )
         
@@ -1246,10 +1248,11 @@ async def select_other_subject(update: Update, context) -> int:
         }
         
         # جلب النموذج
-        response = await api_service.get_form(
+        response = await api_service.get_form_data(
             request_type_id=context.user_data['request_type']['id'],
-            complaint_subject_id=context.user_data['selected_subject_id'],
-            other_subject_id=selected_other_subject['id']
+            request_subject_id=context.user_data['selected_subject_id'],
+            other_subject_id=selected_other_subject['id'],
+            side_id=context.user_data['side_id']
         )
         
         form = DynamicForm.from_dict(response)
