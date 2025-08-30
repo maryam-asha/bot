@@ -339,40 +339,80 @@ class ImprovedFormHandler:
     def __init__(self, api_service: ApiService):
         self.api_service = api_service
         self.validator = FormValidator()
+        self.file_handler = None
+        self.location_handler = None
+        self.error_handler = None
+        
+    def set_handlers(self, file_handler, location_handler, error_handler):
+        """ربط المعالجات الأخرى"""
+        self.file_handler = file_handler
+        self.location_handler = location_handler
+        self.error_handler = error_handler
         
     async def start_form_filling(self, update: Update, context: ContextTypes.DEFAULT_TYPE, form: DynamicForm) -> int:
         """بدء عملية ملء النموذج"""
-        # إنشاء متتبع التقدم
-        progress_tracker = FormProgressTracker(form)
-        progress_tracker.initialize_fields()
-        
-        # حفظ في context
-        context.user_data['form_progress'] = progress_tracker
-        context.user_data['form'] = form
-        
-        # عرض الحقل الأول
-        return await self.show_current_field(update, context)
+        try:
+            # إنشاء متتبع التقدم
+            progress_tracker = FormProgressTracker(form)
+            progress_tracker.initialize_fields()
+            
+            # حفظ في context
+            context.user_data['form_progress'] = progress_tracker
+            context.user_data['form'] = form
+            
+            # عرض الحقل الأول
+            return await self.show_current_field(update, context)
+        except Exception as e:
+            logger.error(f"Error starting form: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, None, f"خطأ في بدء النموذج: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
+                return ConversationHandler.END
         
     async def show_current_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """عرض الحقل الحالي"""
-        progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
-        if not progress_tracker:
-            await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
-            return ConversationHandler.END
+        try:
+            progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
+            if not progress_tracker:
+                await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
+                return ConversationHandler.END
+                
+            current_field = progress_tracker.get_current_field()
+            if not current_field:
+                # انتهى النموذج
+                return await self.show_form_summary(update, context)
+                
+            # عرض معلومات التقدم
+            progress_info = await self.get_progress_info(progress_tracker)
             
-        current_field = progress_tracker.get_current_field()
-        if not current_field:
-            # انتهى النموذج
-            return await self.show_form_summary(update, context)
-            
-        # عرض معلومات التقدم
-        progress_info = await self.get_progress_info(progress_tracker)
-        
-        # عرض الحقل
-        if isinstance(current_field, FormDocument):
-            return await self.show_document_field(update, context, current_field, progress_info)
+            # عرض الحقل حسب نوعه
+            if isinstance(current_field, FormDocument):
+                return await self.show_document_field(update, context, current_field, progress_info)
+            elif hasattr(current_field, 'type_code') and current_field.type_code == 'map':
+                return await self.show_location_field(update, context, current_field, progress_info)
+            else:
+                return await self.show_attribute_field(update, context, current_field, progress_info)
+                
+        except Exception as e:
+            logger.error(f"Error showing current field: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, None, f"خطأ في عرض الحقل: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في عرض الحقل. يرجى المحاولة مرة أخرى.")
+                return ConversationHandler.END
+                
+    async def show_location_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field, progress_info: str) -> int:
+        """عرض حقل الموقع باستخدام معالج الموقع"""
+        if self.location_handler:
+            return await self.location_handler.show_location_field(update, context, field, progress_info)
         else:
-            return await self.show_attribute_field(update, context, current_field, progress_info)
+            # Fallback إذا لم يكن معالج الموقع متوفر
+            return await self.show_attribute_field(update, context, field, progress_info)
             
     async def get_progress_info(self, progress_tracker: FormProgressTracker) -> str:
         """الحصول على معلومات التقدم"""
@@ -502,53 +542,171 @@ class ImprovedFormHandler:
         
     async def handle_field_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """معالجة إدخال الحقل"""
-        progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
-        if not progress_tracker:
-            await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
-            return ConversationHandler.END
+        try:
+            progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
+            if not progress_tracker:
+                await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
+                return ConversationHandler.END
+                
+            current_field = progress_tracker.get_current_field()
+            if not current_field:
+                return await self.show_form_summary(update, context)
+                
+            user_input = update.message.text
+            user_id = update.effective_user.id
             
-        current_field = progress_tracker.get_current_field()
-        if not current_field:
-            return await self.show_form_summary(update, context)
+            # معالجة الأوامر الخاصة
+            if user_input == "🏠 القائمة الرئيسية":
+                return await self.go_to_main_menu(update, context)
+            elif user_input == "◀️ السابق":
+                return await self.go_to_previous_field(update, context)
+            elif user_input == "التالي ▶️":
+                return await self.go_to_next_field(update, context)
+            elif user_input == "⏭️ تخطي":
+                return await self.skip_current_field(update, context)
+            elif user_input == "✅ تم":
+                return await self.finish_multi_selection(update, context)
+                
+            # معالجة الإدخال حسب نوع الحقل
+            if isinstance(current_field, FormDocument):
+                return await self.handle_document_input(update, context, user_input)
+            elif hasattr(current_field, 'type_code') and current_field.type_code == 'map':
+                return await self.handle_location_input(update, context, user_input)
+            else:
+                return await self.handle_attribute_input(update, context, user_input)
+                
+        except Exception as e:
+            logger.error(f"Error handling field input: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, None, f"خطأ في معالجة الإدخال: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في معالجة الإدخال. يرجى المحاولة مرة أخرى.")
+                return ConversationHandler.END
+                
+    async def handle_document_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
+        """معالجة إدخال الملفات"""
+        try:
+            progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
+            current_field = progress_tracker.get_current_field()
             
-        user_input = update.message.text
-        user_id = update.effective_user.id
-        
-        # معالجة الأوامر الخاصة
-        if user_input == "🏠 القائمة الرئيسية":
-            return await self.go_to_main_menu(update, context)
-        elif user_input == "◀️ السابق":
-            return await self.go_to_previous_field(update, context)
-        elif user_input == "التالي ▶️":
-            return await self.go_to_next_field(update, context)
-        elif user_input == "⏭️ تخطي":
-            return await self.skip_current_field(update, context)
-        elif user_input == "✅ تم":
-            return await self.finish_multi_selection(update, context)
+            if not isinstance(current_field, FormDocument):
+                await update.message.reply_text("هذا الحقل لا يتطلب ملف.")
+                return ConversationState.FILL_FORM
+                
+            # استخدام معالج الملفات إذا كان متوفراً
+            if self.file_handler:
+                success, message, file_id = await self.file_handler.handle_file_upload(
+                    update, context, current_field
+                )
+                
+                if success:
+                    # حفظ البيانات
+                    field_state = progress_tracker.field_states[str(current_field.id)]
+                    field_state.add_attachment(file_id, "uploaded_file")
+                    
+                    # عرض رسالة نجاح
+                    await update.message.reply_text(f"✅ {message}")
+                    
+                    # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
+                    if not current_field.is_multi:
+                        return await self.go_to_next_field(update, context)
+                    else:
+                        # إعادة عرض الحقل للملفات الإضافية
+                        return await self.show_current_field(update, context)
+                else:
+                    await update.message.reply_text(f"❌ {message}")
+                    return ConversationState.FILL_FORM
+            else:
+                # Fallback إذا لم يكن معالج الملفات متوفر
+                await update.message.reply_text("معالج الملفات غير متوفر.")
+                return ConversationState.FILL_FORM
+                
+        except Exception as e:
+            logger.error(f"Error handling document input: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, current_field, f"خطأ في معالجة الملف: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في معالجة الملف. يرجى المحاولة مرة أخرى.")
+                return ConversationState.FILL_FORM
+                
+    async def handle_location_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
+        """معالجة إدخال الموقع"""
+        try:
+            progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
+            current_field = progress_tracker.get_current_field()
             
-        # معالجة الإدخال حسب نوع الحقل
-        if isinstance(current_field, FormDocument):
-            return await self.handle_document_input(update, context, user_input)
-        else:
-            return await self.handle_attribute_input(update, context, user_input)
-            
+            if not hasattr(current_field, 'type_code') or current_field.type_code != 'map':
+                await update.message.reply_text("هذا الحقل لا يتطلب موقع.")
+                return ConversationState.FILL_FORM
+                
+            # استخدام معالج الموقع إذا كان متوفراً
+            if self.location_handler:
+                success, message, location_data = await self.location_handler.handle_location_input(
+                    update, context, current_field
+                )
+                
+                if success:
+                    # حفظ البيانات
+                    field_state = progress_tracker.field_states[str(current_field.id)]
+                    field_state.set_value(location_data)
+                    
+                    # الانتقال للحقل التالي
+                    return await self.go_to_next_field(update, context)
+                else:
+                    await update.message.reply_text(f"❌ {message}")
+                    return ConversationState.FILL_FORM
+            else:
+                # Fallback إذا لم يكن معالج الموقع متوفر
+                await update.message.reply_text("معالج الموقع غير متوفر.")
+                return ConversationState.FILL_FORM
+                
+        except Exception as e:
+            logger.error(f"Error handling location input: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, current_field, f"خطأ في معالجة الموقع: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في معالجة الموقع. يرجى المحاولة مرة أخرى.")
+                return ConversationState.FILL_FORM
+                
     async def handle_attribute_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str) -> int:
         """معالجة إدخال السمة"""
-        progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
-        current_field = progress_tracker.get_current_field()
-        
-        # فاليديشن المدخل
-        validation_result = await self.validate_field_input(user_input, current_field)
-        if not validation_result[0]:
-            await update.message.reply_text(f"❌ {validation_result[1]}")
-            return ConversationState.FILL_FORM
+        try:
+            progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
+            current_field = progress_tracker.get_current_field()
             
-        # حفظ القيمة
-        field_state = progress_tracker.field_states[str(current_field.id)]
-        field_state.set_value(validation_result[1])
-        
-        # الانتقال للحقل التالي
-        return await self.go_to_next_field(update, context)
+            # فاليديشن المدخل
+            validation_result = await self.validate_field_input(user_input, current_field)
+            if not validation_result[0]:
+                if self.error_handler:
+                    return await self.error_handler.handle_validation_error(
+                        update, context, current_field, validation_result[1]
+                    )
+                else:
+                    await update.message.reply_text(f"❌ {validation_result[1]}")
+                    return ConversationState.FILL_FORM
+                    
+            # حفظ القيمة
+            field_state = progress_tracker.field_states[str(current_field.id)]
+            field_state.set_value(validation_result[1])
+            
+            # الانتقال للحقل التالي
+            return await self.go_to_next_field(update, context)
+            
+        except Exception as e:
+            logger.error(f"Error handling attribute input: {str(e)}")
+            if self.error_handler:
+                return await self.error_handler.handle_validation_error(
+                    update, context, current_field, f"خطأ في معالجة الإدخال: {str(e)}"
+                )
+            else:
+                await update.message.reply_text("حدث خطأ في معالجة الإدخال. يرجى المحاولة مرة أخرى.")
+                return ConversationState.FILL_FORM
         
     async def validate_field_input(self, user_input: str, field: FormAttribute) -> tuple[bool, str]:
         """فاليديشن إدخال الحقل"""
