@@ -19,6 +19,10 @@ class AuthHandler(BaseHandler):
         self.MOBILE_LENGTH = settings.mobile_length
         self.TOKEN_EXPIRY_DAYS = 2  # التوكن ينتهي بعد يومين
         
+        # للاختبار فقط - توكن ستاتيكي
+        self.TEST_MODE = True  # تغيير هذا إلى False لإعادة تفعيل المصادقة الحقيقية
+        self.STATIC_TOKEN = "test_token_12345"  # توكن ستاتيكي للاختبار
+        
     @monitor_async_performance
     async def process(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Process authentication interactions"""
@@ -36,6 +40,21 @@ class AuthHandler(BaseHandler):
     
     async def _check_auth_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Check if user is authenticated and token is valid"""
+        
+        # للاختبار فقط - اعتبار المستخدم مصادق عليه دائماً
+        if self.TEST_MODE:
+            logger.info("TEST MODE: User automatically authenticated")
+            context.user_data['user_authenticated'] = True
+            context.user_data['access_token'] = self.STATIC_TOKEN
+            context.user_data['token_timestamp'] = datetime.now().isoformat()
+            
+            # تحديث API service token
+            if self.api_service:
+                self.api_service.update_token(self.STATIC_TOKEN, 'Bearer')
+            
+            return ConversationState.SERVICE_MENU
+        
+        # الكود الأصلي للمصادقة الحقيقية
         try:
             # Check if user has a valid token
             token = context.user_data.get('access_token')
@@ -66,6 +85,21 @@ class AuthHandler(BaseHandler):
     
     async def _start_auth_flow(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Start authentication flow"""
+        
+        # للاختبار فقط - تخطي المصادقة
+        if self.TEST_MODE:
+            logger.info("TEST MODE: Skipping authentication, user automatically authenticated")
+            context.user_data['user_authenticated'] = True
+            context.user_data['access_token'] = self.STATIC_TOKEN
+            context.user_data['token_timestamp'] = datetime.now().isoformat()
+            
+            # تحديث API service token
+            if self.api_service:
+                self.api_service.update_token(self.STATIC_TOKEN, 'Bearer')
+            
+            return ConversationState.SERVICE_MENU
+        
+        # الكود الأصلي
         await update.message.reply_text(
             "يرجى تسجيل الدخول للمتابعة. أدخل رقم هاتفك المحمول:",
             reply_markup=ReplyKeyboardRemove()
@@ -75,6 +109,33 @@ class AuthHandler(BaseHandler):
             
     async def _handle_mobile_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle mobile number input"""
+        
+        # للاختبار فقط - تخطي إدخال رقم الهاتف
+        if self.TEST_MODE:
+            logger.info("TEST MODE: Skipping mobile input, user automatically authenticated")
+            context.user_data['user_authenticated'] = True
+            context.user_data['access_token'] = self.STATIC_TOKEN
+            context.user_data['token_timestamp'] = datetime.now().isoformat()
+            context.user_data['mobile'] = '0947800974'  # رقم افتراضي للاختبار
+            
+            # تحديث API service token
+            if self.api_service:
+                self.api_service.update_token(self.STATIC_TOKEN, 'Bearer')
+            
+            await update.message.reply_text(
+                "TEST MODE: تم تسجيل الدخول تلقائياً! 🎉",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        ["طلباتي", "تقديم طلب"],
+                        ["عودة للقائمة الرئيسية"]
+                    ],
+                    resize_keyboard=True,
+                    one_time_keyboard=True
+                )
+            )
+            return ConversationState.SERVICE_MENU
+        
+        # الكود الأصلي
         mobile = update.message.text.strip()
         
         # Validate mobile number format
@@ -114,6 +175,32 @@ class AuthHandler(BaseHandler):
             
     async def _handle_otp_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> ConversationState:
         """Handle OTP verification"""
+        
+        # للاختبار فقط - تخطي إدخال OTP
+        if self.TEST_MODE:
+            logger.info("TEST MODE: Skipping OTP input, user automatically authenticated")
+            context.user_data['user_authenticated'] = True
+            context.user_data['access_token'] = self.STATIC_TOKEN
+            context.user_data['token_timestamp'] = datetime.now().isoformat()
+            
+            # تحديث API service token
+            if self.api_service:
+                self.api_service.update_token(self.STATIC_TOKEN, 'Bearer')
+            
+            await update.message.reply_text(
+                "TEST MODE: تم تسجيل الدخول تلقائياً! 🎉",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        ["طلباتي", "تقديم طلب"],
+                        ["عودة للقائمة الرئيسية"]
+                    ],
+                    resize_keyboard=True,
+                    one_time_keyboard=True
+                )
+            )
+            return ConversationState.SERVICE_MENU
+        
+        # الكود الأصلي
         otp = update.message.text.strip()
         mobile = context.user_data.get('mobile')
         
@@ -168,6 +255,12 @@ class AuthHandler(BaseHandler):
             
     async def is_authenticated(self, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Check if user is authenticated with valid token"""
+        
+        # للاختبار فقط - اعتبار المستخدم مصادق عليه دائماً
+        if self.TEST_MODE:
+            return True
+        
+        # الكود الأصلي
         try:
             token = context.user_data.get('access_token')
             token_timestamp = context.user_data.get('token_timestamp')
