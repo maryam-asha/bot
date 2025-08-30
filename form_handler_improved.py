@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Optional, Union, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from forms.form_model import FormAttribute, FormDocument, DynamicForm
@@ -50,8 +50,6 @@ class FormProgressTracker:
         self.field_states: Dict[str, FormFieldState] = {}
         self.current_field_index = 0
         self.start_time = datetime.now()
-        self.last_activity = datetime.now()
-        self.auto_save_interval = 300  # 5 دقائق
         
     def initialize_fields(self):
         """تهيئة جميع الحقول"""
@@ -89,39 +87,6 @@ class FormProgressTracker:
             fields.append(doc)
         return fields
         
-    def get_progress_percentage(self) -> float:
-        """حساب نسبة التقدم"""
-        total_fields = len(self.field_states)
-        completed_fields = sum(1 for state in self.field_states.values() if state.is_completed)
-        return (completed_fields / total_fields) * 100 if total_fields > 0 else 0
-        
-    def get_remaining_fields_count(self) -> int:
-        """عدد الحقول المتبقية"""
-        total_fields = len(self.field_states)
-        completed_fields = sum(1 for state in self.field_states.values() if state.is_completed)
-        return total_fields - completed_fields
-        
-    def get_estimated_time_remaining(self) -> str:
-        """تقدير الوقت المتبقي"""
-        if self.get_progress_percentage() == 0:
-            return "غير محدد"
-            
-        elapsed_time = datetime.now() - self.start_time
-        progress_percentage = self.get_progress_percentage() / 100
-        
-        if progress_percentage > 0:
-            estimated_total_time = elapsed_time / progress_percentage
-            remaining_time = estimated_total_time - elapsed_time
-            
-            if remaining_time.total_seconds() < 60:
-                return f"{int(remaining_time.total_seconds())} ثانية"
-            elif remaining_time.total_seconds() < 3600:
-                return f"{int(remaining_time.total_seconds() / 60)} دقيقة"
-            else:
-                return f"{int(remaining_time.total_seconds() / 3600)} ساعة"
-        
-        return "غير محدد"
-        
     def can_go_back(self) -> bool:
         """إمكانية الرجوع"""
         return self.current_field_index > 0
@@ -153,14 +118,6 @@ class FormProgressTracker:
             self.current_field_index += 1
             return True
         return False
-        
-    def update_last_activity(self):
-        """تحديث آخر نشاط"""
-        self.last_activity = datetime.now()
-        
-    def should_auto_save(self) -> bool:
-        """هل يجب الحفظ التلقائي"""
-        return (datetime.now() - self.last_activity).total_seconds() >= self.auto_save_interval
 
 class FormValidator:
     """محسن الفاليديشن للحقول"""
@@ -385,16 +342,13 @@ class ImprovedFormHandler:
                 # انتهى النموذج
                 return await self.show_form_summary(update, context)
                 
-            # عرض معلومات التقدم
-            progress_info = await self.get_progress_info(progress_tracker)
-            
             # عرض الحقل حسب نوعه
             if isinstance(current_field, FormDocument):
-                return await self.show_document_field(update, context, current_field, progress_info)
+                return await self.show_document_field(update, context, current_field)
             elif hasattr(current_field, 'type_code') and current_field.type_code == 'map':
-                return await self.show_location_field(update, context, current_field, progress_info)
+                return await self.show_location_field(update, context, current_field)
             else:
-                return await self.show_attribute_field(update, context, current_field, progress_info)
+                return await self.show_attribute_field(update, context, current_field)
                 
         except Exception as e:
             logger.error(f"Error showing current field: {str(e)}")
@@ -406,33 +360,19 @@ class ImprovedFormHandler:
                 await update.message.reply_text("حدث خطأ في عرض الحقل. يرجى المحاولة مرة أخرى.")
                 return ConversationHandler.END
                 
-    async def show_location_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field, progress_info: str) -> int:
+    async def show_location_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field) -> int:
         """عرض حقل الموقع باستخدام معالج الموقع"""
         if self.location_handler:
-            return await self.location_handler.show_location_field(update, context, field, progress_info)
+            return await self.location_handler.show_location_field(update, context, field, "")
         else:
             # Fallback إذا لم يكن معالج الموقع متوفر
-            return await self.show_attribute_field(update, context, field, progress_info)
+            return await self.show_attribute_field(update, context, field)
             
-    async def get_progress_info(self, progress_tracker: FormProgressTracker) -> str:
-        """الحصول على معلومات التقدم"""
-        progress_percentage = progress_tracker.get_progress_percentage()
-        remaining_count = progress_tracker.get_remaining_fields_count()
-        estimated_time = progress_tracker.get_estimated_time_remaining()
-        
-        info = f"📊 التقدم: {progress_percentage:.1f}%\n"
-        info += f"📝 الحقول المتبقية: {remaining_count}\n"
-        if estimated_time != "غير محدد":
-            info += f"⏱️ الوقت المتوقع: {estimated_time}\n"
-            
-        return info
-        
-    async def show_document_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field: FormDocument, progress_info: str) -> int:
+    async def show_document_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field: FormDocument) -> int:
         """عرض حقل الملفات"""
         progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
         
-        message = f"{progress_info}\n\n"
-        message += f"📎 {field.documents_type_name}\n"
+        message = f"📎 {field.documents_type_name}\n"
         message += f"الملفات المسموحة: {', '.join(field.accept_extension)}\n"
         
         # عرض الملفات المرفوعة
@@ -470,12 +410,11 @@ class ImprovedFormHandler:
         await update.message.reply_text(message, reply_markup=reply_markup)
         return ConversationState.FILL_FORM
         
-    async def show_attribute_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field: FormAttribute, progress_info: str) -> int:
+    async def show_attribute_field(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field: FormAttribute) -> int:
         """عرض حقل السمة"""
         progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
         
-        message = f"{progress_info}\n\n"
-        message += f"📝 {field.name}\n"
+        message = f"{field.name}\n"
         
         if field.example:
             message += f"💡 مثال: {field.example}\n"
@@ -785,39 +724,16 @@ class ImprovedFormHandler:
             
     async def go_to_main_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """العودة للقائمة الرئيسية"""
-        # حفظ التقدم
-        await self.save_form_progress(context)
-        
         # تنظيف البيانات
         context.user_data.pop('form_progress', None)
         context.user_data.pop('form', None)
         
-        await update.message.reply_text("تم حفظ تقدمك. يمكنك العودة لاحقاً لإكمال النموذج.")
+        await update.message.reply_text("تم الرجوع إلى القائمة الرئيسية.")
         return ConversationState.MAIN_MENU
         
-    async def save_form_progress(self, context: ContextTypes.DEFAULT_TYPE):
-        """حفظ تقدم النموذج"""
-        progress_tracker: FormProgressTracker = context.user_data.get('form_progress')
-        if not progress_tracker:
-            return
-            
-        # حفظ البيانات في قاعدة البيانات أو ملف مؤقت
-        progress_data = {
-            'user_id': context.user_data.get('user_id'),
-            'form_id': progress_tracker.form.id,
-            'field_states': {k: {
-                'value': v.value,
-                'is_completed': v.is_completed,
-                'completed_at': v.completed_at.isoformat() if v.completed_at else None,
-                'attachments': v.attachments
-            } for k, v in progress_tracker.field_states.items()},
-            'current_field_index': progress_tracker.current_field_index,
-            'start_time': progress_tracker.start_time.isoformat(),
-            'last_activity': progress_tracker.last_activity.isoformat()
-        }
-        
-        # هنا يمكن حفظ البيانات في قاعدة البيانات
-        context.user_data['saved_form_progress'] = progress_data
+    async def finish_multi_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """إنهاء اختيار متعدد"""
+        return await self.go_to_next_field(update, context)
         
     async def show_form_summary(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """عرض ملخص النموذج"""
@@ -852,14 +768,6 @@ class ImprovedFormHandler:
             else:
                 message += f"❌ {doc.documents_type_name}: لا توجد مرفقات\n"
                 
-        # إحصائيات
-        progress_percentage = progress_tracker.get_progress_percentage()
-        total_time = datetime.now() - progress_tracker.start_time
-        
-        message += f"\n📊 الإحصائيات:\n"
-        message += f"نسبة الإنجاز: {progress_percentage:.1f}%\n"
-        message += f"الوقت المستغرق: {total_time.total_seconds() / 60:.1f} دقيقة\n"
-        
         # لوحة المفاتيح
         keyboard = [
             ['✅ تأكيد الإرسال'],
