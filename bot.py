@@ -1364,6 +1364,17 @@ async def select_other_subject(update: Update, context) -> int:
 
 
 
+def get_field_group_name(form, field_id: int) -> str:
+    """الحصول على اسم المجموعة للحقل"""
+    for group in form.groups:
+        # البحث في attributes
+        if any(attr.id == field_id for attr in group.attributes):
+            return group.name
+        # البحث في documents إذا كان موجوداً
+        if hasattr(group, 'documents') and any(doc.id == field_id for doc in group.documents):
+            return group.name
+    return "معلومات عامة"
+
 async def show_form_field(update: Update, context, field: Union[FormAttribute, FormDocument]) -> int:
     logger.debug(f"Showing field: {type(field).__name__}, ID: {field.id}, Name: {field.name if isinstance(field, FormAttribute) else field.documents_type_name}")
     form = context.user_data.get('form')
@@ -1381,7 +1392,10 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
     
     if isinstance(field, FormDocument):
         # عرض اسم المجموعة أولاً
-        group_name = next((group.name for group in form.groups if any(doc.id == field.id for doc in group.documents)), "")
+        group_name = get_field_group_name(form, field.id)
+        if group_name == "معلومات عامة":
+            group_name = "مرفقات"
+            
         message = f"{group_name}\nيرجى رفع {field.documents_type_name}.\nالملفات المسموحة: {', '.join(field.accept_extension)}"
         
         keyboard = []
@@ -1402,7 +1416,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
         )
     else:
         # عرض اسم المجموعة أولاً
-        group_name = next((group.name for group in form.groups if any(attr.id == field.id for attr in group.attributes)), "")
+        group_name = get_field_group_name(form, field.id)
         
         if field.type_code == "switch":
             keyboard = [["نعم", "لا"]]
