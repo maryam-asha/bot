@@ -1709,41 +1709,40 @@ async def handle_attachment_improved(update: Update, context: ContextTypes.DEFAU
         if not form:
             await update.message.reply_text("حدث خطأ في النموذج. يرجى المحاولة مرة أخرى.")
             return ConversationHandler.END
-            
+
         current_field = context.user_data.get('current_form_field')
         if not current_field or not isinstance(current_field, FormDocument):
             await update.message.reply_text("هذا الحقل لا يتطلب ملف.")
             return ConversationState.FILL_FORM
-            
+
         # استخدام معالج الملفات المحسن
         success, message, file_id = await file_handler.handle_file_upload(
             update, context, current_field
         )
-        
-                            if success:
-                        # حفظ file_id في النموذج (وليس رسالة النجاح)
-                        if current_field.id not in form.document_data:
-                            form.document_data[current_field.id] = []
-                        form.document_data[current_field.id].append(file_id)
-                        
-                        # عرض رسالة نجاح
-                        await update.message.reply_text(f"✅ {message}")
-                        
-                        # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
-                        if not current_field.is_multi:
-                            return await move_to_next_field(update, context, form)
-                        else:
-                            # إعادة عرض الحقل للملفات الإضافية
-                            return await show_form_field(update, context, current_field)
-                    else:
-                        await update.message.reply_text(f"❌ {message}")
-                        return ConversationState.FILL_FORM
-            
+
+        if success:
+            # حفظ file_id في النموذج (وليس رسالة النجاح)
+            if current_field.id not in form.document_data:
+                form.document_data[current_field.id] = []
+            form.document_data[current_field.id].append(file_id)
+
+            # عرض رسالة نجاح
+            await update.message.reply_text(f"✅ {message}")
+
+            # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
+            if not current_field.is_multi:
+                return await move_to_next_field(update, context, form)
+            else:
+                # إعادة عرض الحقل للملفات الإضافية
+                return await show_form_field(update, context, current_field)
+        else:
+            await update.message.reply_text(f"❌ {message}")
+            return ConversationState.FILL_FORM
+
     except Exception as e:
         logger.error(f"Error handling attachment: {str(e)}")
         await update.message.reply_text(f"حدث خطأ في معالجة الملف: {str(e)}")
         return ConversationState.FILL_FORM
-
 
 
 async def main():
