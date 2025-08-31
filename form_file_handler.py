@@ -16,18 +16,9 @@ class FormFileHandler:
     
     def __init__(self, api_service: ApiService):
         self.api_service = api_service
-        self.supported_file_types = {
-            'document': ['pdf', 'doc', 'docx', 'txt', 'rtf'],
-            'image': ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
-            'video': ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'],
-            'audio': ['mp3', 'wav', 'ogg', 'aac', 'wma']
-        }
-        self.max_file_sizes = {
-            'document': 10 * 1024 * 1024,  # 10MB
-            'image': 5 * 1024 * 1024,      # 5MB
-            'video': 50 * 1024 * 1024,     # 50MB
-            'audio': 20 * 1024 * 1024      # 20MB
-        }
+
+        # حجم افتراضي للملفات
+        self.default_max_file_size = 10 * 1024 * 1024  # 10MB
         
     async def handle_file_upload(self, update: Update, context: ContextTypes.DEFAULT_TYPE, field: FormDocument) -> tuple[bool, str, Optional[str]]:
         """معالجة رفع الملف"""
@@ -103,9 +94,6 @@ class FormFileHandler:
         else:
             file_info['extension'] = self.get_extension_from_mime_type(file_info['mime_type'])
             
-        # تحديد نوع الملف بناءً على الامتداد
-        file_info['file_category'] = self.get_file_category(file_info['extension'])
-            
         return file_info
         
     def get_extension_from_mime_type(self, mime_type: str) -> str:
@@ -125,20 +113,7 @@ class FormFileHandler:
         }
         return mime_to_ext.get(mime_type, 'bin')
         
-    def get_file_category(self, extension: str) -> str:
-        """تحديد فئة الملف بناءً على الامتداد"""
-        extension = extension.lower()
-        
-        if extension in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico']:
-            return 'image'
-        elif extension in ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv']:
-            return 'video'
-        elif extension in ['mp3', 'wav', 'ogg', 'aac', 'wma']:
-            return 'audio'
-        elif extension in ['pdf', 'doc', 'docx', 'txt', 'rtf', 'zip', 'rar']:
-            return 'document'
-        else:
-            return 'document'
+
         
     async def validate_file(self, file_info: Dict, field: FormDocument) -> tuple[bool, str]:
         """فاليديشن الملف"""
@@ -148,16 +123,21 @@ class FormFileHandler:
                 return False, f"نوع الملف غير مدعوم. الأنواع المدعومة: {', '.join(field.accept_extension)}"
                 
         # التحقق من حجم الملف
-        max_size = getattr(field, 'max_file_size', self.max_file_sizes.get(file_info['file_category'], 10 * 1024 * 1024))
+        max_size = getattr(field, 'max_file_size', self.default_max_file_size)
         if file_info['file_size'] > max_size:
             return False, f"حجم الملف كبير جداً. الحد الأقصى: {max_size / (1024*1024):.1f} MB"
             
-        # التحقق من نوع الملف حسب الحقل
+        # التحقق من نوع الملف حسب types في FormDocument
         if hasattr(field, 'types') and field.types:
-            # التحقق من أن نوع الملف مسموح حسب types في FormDocument
-            allowed_types = [t['type'] for t in field.types]
-            if file_info['file_category'] not in allowed_types:
-                return False, f"نوع الملف غير مسموح. الأنواع المسموحة: {', '.join(allowed_types)}"
+            # البحث عن النوع المناسب بناءً على امتداد الملف
+            file_type = None
+            for type_info in field.types:
+                if file_info['extension'] in [ext.lower() for ext in type_info['extension']]:
+                    file_type = type_info['type']
+                    break
+            
+            if not file_type:
+                return False, f"نوع الملف غير مسموح. الأنواع المدعومة: {', '.join([t['type'] for t in field.types])}"
                 
         return True, ""
         
