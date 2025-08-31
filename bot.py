@@ -130,7 +130,9 @@ async def handle_back(update: Update, context, current_state: int) -> int:
             ConversationState.SELECT_REQUEST_NUMBER: ConversationState.SERVICE_MENU,
             ConversationState.ENTER_OTP: ConversationState.ENTER_MOBILE,
             ConversationState.ENTER_MOBILE: ConversationState.SERVICE_MENU,
-            ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM
+            ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM,
+            ConversationState.SELECT_PARENT_SIDES: ConversationState.SERVICE_MENU,
+            ConversationState.SELECT_SIDE_CHILDREN: ConversationState.SELECT_COMPLIMENT_SIDE
         }
         prev_state = back_state_map.get(current_state, ConversationState.MAIN_MENU)
         logger.info(f"Using default back state: {prev_state}")
@@ -407,6 +409,11 @@ async def service_menu(update: Update, context) -> int:
                 'يرجى اختيار الجهة:',
                 reply_markup=await create_reply_keyboard(keyboard)
             )
+            
+            # إضافة خطوة اختيار الجهات الرئيسية لتاريخ التنقل
+            add_step_to_history(context, ConversationState.SELECT_PARENT_SIDES)
+            add_step_to_history(context, ConversationState.SELECT_COMPLIMENT_SIDE)
+            
             context.user_data['conversation_state'] = ConversationState.SELECT_COMPLIMENT_SIDE
             return ConversationState.SELECT_COMPLIMENT_SIDE
         except Exception as e:
@@ -415,8 +422,9 @@ async def service_menu(update: Update, context) -> int:
                 "حدث خطأ أثناء جلب الجهات. يرجى المحاولة لاحقاً.",
                 reply_markup=get_service_menu_keyboard()
             )
-            context.user_data['conversation_state'] = ConversationState.SERVICE_MENU
-            return ConversationState.SERVICE_MENU
+            # العودة للقائمة الرئيسية بدلاً من service_menu
+            context.user_data['conversation_state'] = ConversationState.MAIN_MENU
+            return ConversationState.MAIN_MENU
     elif user_input == "طلباتي":
         context.user_data['requests_page'] = 0
         return await display_user_requests(update, context)
@@ -585,6 +593,10 @@ async def select_compliment_side(update: Update, context) -> int:
                 'يرجى اختيار الجهة الفرعية:',
                 reply_markup=await create_reply_keyboard(keyboard)
             )
+            
+            # إضافة خطوة اختيار الجهات الفرعية لتاريخ التنقل
+            add_step_to_history(context, ConversationState.SELECT_SIDE_CHILDREN)
+            
             return ConversationState.SELECT_COMPLIMENT_SIDE
         else:
             if selected_side.get('disable_request', True):
@@ -600,22 +612,29 @@ async def select_compliment_side(update: Update, context) -> int:
                 request_types = response.get('data', [])
                 if not request_types:
                     await send_error_message(update, 'لا توجد أنواع طلبات متاحة.')
-                    return ConversationState.SERVICE_MENU
+                    # العودة للجهات بدلاً من service_menu
+                    return ConversationState.SELECT_COMPLIMENT_SIDE
                 context.user_data['api_data'] = {'request_types': request_types}
                 keyboard = [[item['name'] for item in request_types[i:i + 2]] for i in range(0, len(request_types), 2)]
                 await update.message.reply_text(
                     'يرجى اختيار نوع الطلب:',
                     reply_markup=await create_reply_keyboard(keyboard)
                 )
+                
+                # إضافة خطوة اختيار نوع الطلب لتاريخ التنقل
+                add_step_to_history(context, ConversationState.SELECT_REQUEST_TYPE)
+                
                 return ConversationState.SELECT_REQUEST_TYPE
             except Exception as e:
                 logger.error(f"Error fetching request types: {str(e)}")
                 await send_error_message(update, "حدث خطأ في جلب أنواع الطلبات.")
-                return ConversationState.SERVICE_MENU
+                # العودة للجهات بدلاً من service_menu
+                return ConversationState.SELECT_COMPLIMENT_SIDE
     except Exception as e:
         logger.error(f"Error fetching side children: {str(e)}")
         await send_error_message(update, "حدث خطأ في جلب بيانات الجهات الفرعية.")
-        return ConversationState.SERVICE_MENU
+        # العودة للجهات الرئيسية بدلاً من service_menu
+        return ConversationState.SELECT_COMPLIMENT_SIDE
 
 
 async def fill_form(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

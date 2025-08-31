@@ -22,6 +22,8 @@ class ConversationState(IntEnum):
     COLLECT_FORM_FIELD = 16
     SELECT_OTHER_SUBJECT = 17
     SELECT_TIME_AM_PM = 18
+    SELECT_PARENT_SIDES = 19
+    SELECT_SIDE_CHILDREN = 20
 
 # State transition mapping for better navigation
 STATE_TRANSITIONS: Dict[ConversationState, ConversationState] = {
@@ -31,13 +33,15 @@ STATE_TRANSITIONS: Dict[ConversationState, ConversationState] = {
     ConversationState.SELECT_OTHER_SUBJECT: ConversationState.SELECT_SUBJECT,
     ConversationState.SELECT_SERVICE_CATEGORY: ConversationState.SELECT_SUBJECT,
     ConversationState.SELECT_SERVICE: ConversationState.SELECT_SERVICE_CATEGORY,
-    ConversationState.FILL_FORM: ConversationState.SELECT_SUBJECT,
+    ConversationState.FILL_FORM: ConversationState.SELECT_SERVICE,
     ConversationState.COLLECT_FORM_FIELD: ConversationState.FILL_FORM,
     ConversationState.CONFIRM_SUBMISSION: ConversationState.COLLECT_FORM_FIELD,
     ConversationState.SELECT_REQUEST_NUMBER: ConversationState.SERVICE_MENU,
     ConversationState.ENTER_OTP: ConversationState.ENTER_MOBILE,
     ConversationState.ENTER_MOBILE: ConversationState.SERVICE_MENU,
-    ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM
+    ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM,
+    ConversationState.SELECT_PARENT_SIDES: ConversationState.SERVICE_MENU,
+    ConversationState.SELECT_SIDE_CHILDREN: ConversationState.SELECT_COMPLIMENT_SIDE
 }
 
 def get_previous_state(current_state: ConversationState) -> ConversationState:
