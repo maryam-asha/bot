@@ -104,22 +104,36 @@ async def send_error_message(update: Update, message: str, field=None, keyboard_
 
 async def handle_back(update: Update, context, current_state: int) -> int:
     logger.debug(f"Handling back from state {current_state}")
-
-    back_state_map = {
-        ConversationState.SELECT_COMPLIMENT_SIDE: ConversationState.SERVICE_MENU,
-        ConversationState.SELECT_REQUEST_TYPE: ConversationState.SELECT_COMPLIMENT_SIDE,
-        ConversationState.SELECT_SUBJECT: ConversationState.SELECT_REQUEST_TYPE,
-        ConversationState.SELECT_OTHER_SUBJECT: ConversationState.SELECT_SUBJECT,
-        ConversationState.SELECT_SERVICE_CATEGORY: ConversationState.SELECT_SUBJECT,
-        ConversationState.SELECT_SERVICE: ConversationState.SELECT_SERVICE_CATEGORY,
-        ConversationState.FILL_FORM: ConversationState.SELECT_SUBJECT,  
-        ConversationState.COLLECT_FORM_FIELD: ConversationState.FILL_FORM,
-        ConversationState.CONFIRM_SUBMISSION: ConversationState.COLLECT_FORM_FIELD,
-        ConversationState.SELECT_REQUEST_NUMBER: ConversationState.SERVICE_MENU,
-        ConversationState.ENTER_OTP: ConversationState.ENTER_MOBILE,
-        ConversationState.ENTER_MOBILE: ConversationState.SERVICE_MENU,
-        ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM
-    }
+    
+    # استخدام تتبع الخطوات المخزن في context
+    step_history = context.user_data.get('step_history', [])
+    
+    if step_history and len(step_history) > 1:
+        # إزالة الخطوة الحالية
+        step_history.pop()
+        # العودة للخطوة السابقة
+        prev_state = step_history[-1]
+        context.user_data['step_history'] = step_history
+        logger.info(f"Going back to previous step: {prev_state}")
+    else:
+        # إذا لم يكن هناك تتبع، استخدم الخريطة الافتراضية
+        back_state_map = {
+            ConversationState.SELECT_COMPLIMENT_SIDE: ConversationState.SERVICE_MENU,
+            ConversationState.SELECT_REQUEST_TYPE: ConversationState.SELECT_COMPLIMENT_SIDE,
+            ConversationState.SELECT_SUBJECT: ConversationState.SELECT_REQUEST_TYPE,
+            ConversationState.SELECT_OTHER_SUBJECT: ConversationState.SELECT_SUBJECT,
+            ConversationState.SELECT_SERVICE_CATEGORY: ConversationState.SELECT_SUBJECT,
+            ConversationState.SELECT_SERVICE: ConversationState.SELECT_SERVICE_CATEGORY,
+            ConversationState.FILL_FORM: ConversationState.SELECT_SERVICE,  # ✅ إصلاح: العودة للخدمة بدلاً من الموضوع
+            ConversationState.COLLECT_FORM_FIELD: ConversationState.FILL_FORM,
+            ConversationState.CONFIRM_SUBMISSION: ConversationState.COLLECT_FORM_FIELD,
+            ConversationState.SELECT_REQUEST_NUMBER: ConversationState.SERVICE_MENU,
+            ConversationState.ENTER_OTP: ConversationState.ENTER_MOBILE,
+            ConversationState.ENTER_MOBILE: ConversationState.SERVICE_MENU,
+            ConversationState.SELECT_TIME_AM_PM: ConversationState.FILL_FORM
+        }
+        prev_state = back_state_map.get(current_state, ConversationState.MAIN_MENU)
+        logger.info(f"Using default back state: {prev_state}")
 
     prev_state = back_state_map.get(current_state, ConversationState.MAIN_MENU)
     logger.info(f"previous state {prev_state}")
@@ -196,6 +210,23 @@ async def back_from_compliment_side(update: Update, context):
 
 def update_last_activity(context):
     context.user_data['last_activity'] = datetime.now()
+
+def add_step_to_history(context, state: int):
+    """إضافة خطوة لتاريخ التنقل"""
+    if 'step_history' not in context.user_data:
+        context.user_data['step_history'] = []
+    
+    # إضافة الخطوة الحالية إذا لم تكن موجودة
+    if not context.user_data['step_history'] or context.user_data['step_history'][-1] != state:
+        context.user_data['step_history'].append(state)
+        logger.debug(f"Added step to history: {state}. Total steps: {len(context.user_data['step_history'])}")
+
+def get_previous_step(context) -> int:
+    """الحصول على الخطوة السابقة"""
+    step_history = context.user_data.get('step_history', [])
+    if len(step_history) > 1:
+        return step_history[-2]  # الخطوة قبل الأخيرة
+    return ConversationState.MAIN_MENU
 
 async def show_main_menu(update: Update, context, message: str):
     keyboard = [[option] for option in MAIN_MENU_OPTIONS]
@@ -301,6 +332,10 @@ async def start(update: Update, context) -> int:
     except Exception as e:
             logger.error(f"Failed to fetch user info: {str(e)}")
     update_last_activity(context)
+    
+    # إضافة خطوة القائمة الرئيسية لتاريخ التنقل
+    add_step_to_history(context, ConversationState.MAIN_MENU)
+    
     await show_main_menu(update, context, message)
     return ConversationState.MAIN_MENU
 
@@ -1173,6 +1208,8 @@ async def select_subject(update: Update, context) -> int:
                 reply_markup=await create_reply_keyboard(keyboard)
             )
             context.user_data['selected_subject_id'] = selected_subject['id']
+            # إضافة خطوة فئة الخدمة لتاريخ التنقل
+            add_step_to_history(context, ConversationState.SELECT_SERVICE_CATEGORY)
             return ConversationState.SELECT_SERVICE_CATEGORY
         
         elif selected_subject['code'] == other_subject_code:
@@ -1266,6 +1303,8 @@ async def select_service_category(update: Update, context) -> int:
             'يرجى اختيار الخدمة:',
             reply_markup=await create_reply_keyboard(keyboard)
         )
+        # إضافة خطوة الخدمة لتاريخ التنقل
+        add_step_to_history(context, ConversationState.SELECT_SERVICE)
         return ConversationState.SELECT_SERVICE
     except Exception as e:
         logger.error(f"Error fetching services for category: {str(e)}")
@@ -1308,6 +1347,9 @@ async def select_service(update: Update, context) -> int:
         
         form = DynamicForm.from_dict(response)
         context.user_data['form'] = form
+        
+        # إضافة خطوة النموذج لتاريخ التنقل
+        add_step_to_history(context, ConversationState.FILL_FORM)
         
         # عرض الحقل الأول
         first_field = form.get_next_field(context)
