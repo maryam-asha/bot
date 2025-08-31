@@ -207,7 +207,8 @@ async def show_main_menu(update: Update, context, message: str):
 def get_service_menu_keyboard():
     keyboard = [
         ["تقديم طلب"],
-        ["طلباتي"]
+        ["طلباتي"],
+        ["العودة للقائمة الرئيسية"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
@@ -1129,6 +1130,9 @@ async def select_subject(update: Update, context) -> int:
     if selected_text == MAIN_MENU_BUTTON:
         await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
         return ConversationState.MAIN_MENU
+    if selected_text == 'العودة للقائمة الرئيسية':
+        await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
+        return ConversationState.MAIN_MENU
     
     subjects = context.user_data.get('api_data', {}).get('complaint_subjects', [])
     selected_subject = next((item for item in subjects if item['name'] == selected_text), None)
@@ -1227,6 +1231,9 @@ async def select_service_category(update: Update, context) -> int:
     if selected_text == MAIN_MENU_BUTTON:
         await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
         return ConversationState.MAIN_MENU
+    if selected_text == 'العودة للقائمة الرئيسية':
+        await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
+        return ConversationState.MAIN_MENU
     
     categories = context.user_data.get('service_categories', [])
     selected_category = next((cat for cat in categories if cat['text'] == selected_text), None)
@@ -1273,6 +1280,9 @@ async def select_service(update: Update, context) -> int:
     if selected_text == '▶️ الرجوع':
         return await handle_back(update, context, ConversationState.SELECT_SERVICE)
     if selected_text == MAIN_MENU_BUTTON:
+        await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
+        return ConversationState.MAIN_MENU
+    if selected_text == 'العودة للقائمة الرئيسية':
         await show_main_menu(update, context, message="☑️ YourVoiceSyBot v1.0.0")
         return ConversationState.MAIN_MENU
     
@@ -1403,7 +1413,9 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
         if field.is_multi:
             message += f"\nيمكنك رفع ملفات متعددة. (تم رفع {len(current_file_ids)} ملف{'ات' if len(current_file_ids) != 1 else ''} حتى الآن)"
             keyboard.append(['تم'])
-        if not field.required and not current_file_ids:
+        
+        # إظهار زر "التالي" فقط إذا كان الحقل غير مطلوب
+        if not field.required:
             keyboard.append(['التالي'])
         
         # Add back button if we can go back
@@ -1420,6 +1432,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
         
         if field.type_code == "switch":
             keyboard = [["نعم", "لا"]]
+            # إظهار زر "التالي" فقط إذا كان الحقل غير مطلوب
             if not field.required:
                 keyboard.append(["التالي"])
             message = f"{group_name}\nيرجى اختيار {field.name}"
@@ -1439,6 +1452,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
                 selected_values = field.get_selected_values()
                 if selected_values:
                     keyboard.append(['تم'])
+            # إظهار زر "التالي" فقط إذا كان الحقل غير مطلوب
             if not field.required:
                 keyboard.append(['التالي'])
             message = f"{group_name}\nيرجى اختيار {field.name}:"
@@ -1462,6 +1476,7 @@ async def show_form_field(update: Update, context, field: Union[FormAttribute, F
             
         else:
             keyboard = []
+            # إظهار زر "التالي" فقط إذا كان الحقل غير مطلوب
             if not field.required:
                 keyboard.append(['التالي'])
             message = f"{group_name}\nيرجى إدخال {field.name}:"
@@ -1644,24 +1659,24 @@ async def handle_attachment_improved(update: Update, context: ContextTypes.DEFAU
             update, context, current_field
         )
         
-        if success:
-            # حفظ البيانات في النموذج
-            if current_field.id not in form.document_data:
-                form.document_data[current_field.id] = []
-            form.document_data[current_field.id].append(file_id)
-            
-            # عرض رسالة نجاح
-            await update.message.reply_text(f"✅ {message}")
-            
-            # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
-            if not current_field.is_multi:
-                return await move_to_next_field(update, context, form)
-            else:
-                # إعادة عرض الحقل للملفات الإضافية
-                return await show_form_field(update, context, current_field)
-        else:
-            await update.message.reply_text(f"❌ {message}")
-            return ConversationState.FILL_FORM
+                            if success:
+                        # حفظ file_id في النموذج (وليس رسالة النجاح)
+                        if current_field.id not in form.document_data:
+                            form.document_data[current_field.id] = []
+                        form.document_data[current_field.id].append(file_id)
+                        
+                        # عرض رسالة نجاح
+                        await update.message.reply_text(f"✅ {message}")
+                        
+                        # إذا كان الحقل يتطلب ملف واحد، انتقل للتالي
+                        if not current_field.is_multi:
+                            return await move_to_next_field(update, context, form)
+                        else:
+                            # إعادة عرض الحقل للملفات الإضافية
+                            return await show_form_field(update, context, current_field)
+                    else:
+                        await update.message.reply_text(f"❌ {message}")
+                        return ConversationState.FILL_FORM
             
     except Exception as e:
         logger.error(f"Error handling attachment: {str(e)}")
